@@ -1,0 +1,7 @@
+# Mengabaikan file hasil kompilasi (biar Github nggak penuh)
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+.env
