@@ -1,4 +1,4 @@
-package handlers
+package handler
 
 import (
 	"encoding/json"
@@ -6,13 +6,11 @@ import (
 	"html"
 	"net/http"
 
-	// Ganti "ulaundry" dengan nama module lu di go.mod (kalo beda)
-	"ulaundry/config"
 	"ulaundry/models"
 )
 
 // Pindahin fungsi getSemuaPesanan dari main.go kemaren
-func GetSemuaPesanan(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetSemuaPesanan(w http.ResponseWriter, r *http.Request) {
 	// Panggil koneksi DB dari package config
 	// Ubah query SELECT lu di GetSemuaPesanan (dan fungsi filter status) jadi kayak gini:
 	query := `
@@ -23,7 +21,7 @@ func GetSemuaPesanan(w http.ResponseWriter, r *http.Request) {
 		TO_CHAR(waktu_selesai_real, 'YYYY-MM-DD HH24:MI:SS')
 	FROM pesanan
 `
-	rows, err := config.DB.Query(query)
+	rows, err := h.db.Query(query)
 
 	if err != nil {
 		http.Error(w, "Gagal query ke database", http.StatusInternalServerError)
@@ -48,7 +46,7 @@ func GetSemuaPesanan(w http.ResponseWriter, r *http.Request) {
 }
 
 // Pindahin fungsi bikinPesananBaru
-func BikinPesananBaru(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) BikinPesananBaru(w http.ResponseWriter, r *http.Request) {
 	var p models.Pesanan
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 		http.Error(w, "Format JSON salah", http.StatusBadRequest)
@@ -58,7 +56,7 @@ func BikinPesananBaru(w http.ResponseWriter, r *http.Request) {
 	// Cari bagian query INSERT di BikinPesananBaru, lalu ganti jadi:
 	query := `INSERT INTO pesanan (id_pesanan, nama_customer, layanan, total_biaya, waktu_perkiraan_selesai) 
     	      VALUES ($1, $2, $3, $4, $5)`
-	_, err := config.DB.Exec(query, p.IDPesanan, p.NamaCustomer, p.Layanan, p.TotalBiaya, p.WaktuPerkiraanSelesai)
+	_, err := h.db.Exec(query, p.IDPesanan, p.NamaCustomer, p.Layanan, p.TotalBiaya, p.WaktuPerkiraanSelesai)
 	if err != nil {
 		http.Error(w, "Gagal simpan ke database", http.StatusInternalServerError)
 		return
@@ -72,7 +70,7 @@ func BikinPesananBaru(w http.ResponseWriter, r *http.Request) {
 // --- TAMBAHIN KODE INI DI BAWAH ---
 
 // Fungsi buat UPDATE status pesanan (PUT Request)
-func UpdateStatusPesanan(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) UpdateStatusPesanan(w http.ResponseWriter, r *http.Request) {
 	idPesanan := r.PathValue("id")
 
 	var input struct {
@@ -85,7 +83,7 @@ func UpdateStatusPesanan(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 1. MULAI TRANSAKSI DATABASE (Poin 4)
-	tx, err := config.DB.Begin()
+	tx, err := h.db.Begin()
 	if err != nil {
 		http.Error(w, "Gagal memulai transaksi server", http.StatusInternalServerError)
 		return
@@ -138,7 +136,7 @@ func UpdateStatusPesanan(w http.ResponseWriter, r *http.Request) {
 }
 
 // Fungsi buat Filter pesanan berdasarkan status (GET Request)
-func GetPesananByStatus(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetPesananByStatus(w http.ResponseWriter, r *http.Request) {
 	// Ambil parameter status dari URL query (misal: /api/pesanan/status?q=Selesai)
 	statusQuery := r.URL.Query().Get("q")
 
@@ -156,7 +154,7 @@ func GetPesananByStatus(w http.ResponseWriter, r *http.Request) {
 		TO_CHAR(waktu_selesai_real, 'YYYY-MM-DD HH24:MI:SS')
 	FROM pesanan
 `
-	rows, err := config.DB.Query(query)
+	rows, err := h.db.Query(query)
 
 	if err != nil {
 		http.Error(w, "Gagal query ke database", http.StatusInternalServerError)
@@ -179,14 +177,14 @@ func GetPesananByStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // Fungsi buat Cetak Struk (Ngeluarin HTML khusus printer kasir)
-func CetakStruk(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) CetakStruk(w http.ResponseWriter, r *http.Request) {
 	idPesanan := r.PathValue("id")
 
 	// Cari pesanan di database
 	var p models.Pesanan
 	query := "SELECT id_pesanan, nama_customer, layanan, total_biaya, status, TO_CHAR(waktu_pesan, 'YYYY-MM-DD HH24:MI:SS'), TO_CHAR(waktu_perkiraan_selesai, 'YYYY-MM-DD HH24:MI:SS'), TO_CHAR(waktu_selesai_real, 'YYYY-MM-DD HH24:MI:SS') FROM pesanan WHERE id_pesanan = $1"
 
-	err := config.DB.QueryRow(query, idPesanan).Scan(&p.IDPesanan, &p.NamaCustomer, &p.Layanan, &p.TotalBiaya, &p.Status, &p.WaktuPesan, &p.WaktuPerkiraanSelesai, &p.WaktuSelesaiReal)
+	err := h.db.QueryRow(query, idPesanan).Scan(&p.IDPesanan, &p.NamaCustomer, &p.Layanan, &p.TotalBiaya, &p.Status, &p.WaktuPesan, &p.WaktuPerkiraanSelesai, &p.WaktuSelesaiReal)
 
 	if err != nil {
 		http.Error(w, "Pesanan tidak ditemukan", http.StatusNotFound)
@@ -250,13 +248,13 @@ func CetakStruk(w http.ResponseWriter, r *http.Request) {
 }
 
 // Fungsi buat Lihat Pesanan berdasarkan Id
-func GetPesananById(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetPesananById(w http.ResponseWriter, r *http.Request) {
 	idPesanan := r.PathValue("id")
 
 	// Cari pesanan di database
 	var p models.Pesanan
 	query := "SELECT id_pesanan, nama_customer, layanan, total_biaya, status FROM pesanan WHERE id_pesanan = $1"
-	err := config.DB.QueryRow(query, idPesanan).Scan(&p.IDPesanan, &p.NamaCustomer, &p.Layanan, &p.TotalBiaya, &p.Status)
+	err := h.db.QueryRow(query, idPesanan).Scan(&p.IDPesanan, &p.NamaCustomer, &p.Layanan, &p.TotalBiaya, &p.Status)
 
 	if err != nil {
 		http.Error(w, "Pesanan tidak ditemukan", http.StatusNotFound)

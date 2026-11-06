@@ -1,13 +1,12 @@
-package handlers
+package handler
 
 import (
 	"net/http"
-	"ulaundry/config"
 )
 
-func HealthCheck(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	// Cek koneksi DB juga, kalau putus statusnya 500
-	err := config.DB.Ping()
+	err := h.db.Ping()
 	if err != nil {
 		http.Error(w, `{"status":"error", "database":"disconnected"}`, http.StatusInternalServerError)
 		return

@@ -1,5 +1,7 @@
 package main
 
+// Legacy setup utility; do not run against operational data.
+
 import (
 	"fmt"
 	"log"

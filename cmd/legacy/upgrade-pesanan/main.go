@@ -1,5 +1,7 @@
 package main
 
+// Legacy schema utility; versioned migrations replace this separately.
+
 import (
 	"fmt"
 	"log"

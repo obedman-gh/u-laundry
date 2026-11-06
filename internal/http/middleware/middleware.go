@@ -1,24 +1,28 @@
-package handlers
+package middleware
 
 import (
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// POIN 6: Batasi CORS
-func BukaPintuCORS(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// Ambil origin dari .env. Kalau kosong, otomatis fallback ke localhost/bintang buat dev.
-		allowedOrigin := os.Getenv("ALLOWED_ORIGIN")
-		if allowedOrigin == "" {
-			allowedOrigin = "*"
-		}
+type Middleware struct {
+	jwtSecret     string
+	allowedOrigin string
+}
 
-		w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+func New(jwtSecret, allowedOrigin string) *Middleware {
+	if allowedOrigin == "" {
+		allowedOrigin = "*" // Legacy default; production policy is tightened separately.
+	}
+	return &Middleware{jwtSecret: jwtSecret, allowedOrigin: allowedOrigin}
+}
+
+func (m *Middleware) BukaPintuCORS(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", m.allowedOrigin)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
@@ -33,7 +37,7 @@ func BukaPintuCORS(next http.HandlerFunc) http.HandlerFunc {
 }
 
 // POIN 7: Verifikasi Algoritma JWT
-func ValidasiJWT(next http.HandlerFunc) http.HandlerFunc {
+func (m *Middleware) ValidasiJWT(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if !strings.HasPrefix(authHeader, "Bearer ") {
@@ -43,8 +47,7 @@ func ValidasiJWT(next http.HandlerFunc) http.HandlerFunc {
 
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 
-		// Pastikan JWT_SECRET di .env beneran ada isinya
-		secret := os.Getenv("JWT_SECRET")
+		secret := m.jwtSecret
 		if secret == "" {
 			http.Error(w, "Error Server: JWT Secret belum dikonfigurasi", http.StatusInternalServerError)
 			return

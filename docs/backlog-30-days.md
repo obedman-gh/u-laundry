@@ -1,0 +1,55 @@
+# Backlog 30 Hari ULaundry
+
+Baseline 7 November 2026, commit `94ffc77`. Acuan urutan/scope: `F:\project\ulaundry\PROMPTS_30_HARI_ULaundry_PRODUCTION.md`; instruksi kerja: `../AGENTS.md` dari root repository. Hari adalah urutan pekerjaan, bukan janji selesai pada tanggal kalender. Hari 01 selesai untuk dokumen; fondasi hari 02 sudah diimplementasikan, dengan bukti pada `docs/progress/day-02.md`; hari 03–30 **belum dikerjakan**. H09 (build package) terselesaikan; M05 dipersempit dengan test sintetis tanpa init/DB nyata, namun PostgreSQL integration/security/ledger tests masih backlog. Temuan lain tetap terbuka selain koreksi dokumentasi L01.
+
+## Aturan pelaksanaan
+
+Setiap hari membaca Git status, laporan sebelumnya dan dokumen terkait; menjaga perubahan pengguna, memperbarui command/dokumen yang terdampak dan menyimpan `docs/progress/day-NN.md` dengan format AGENTS. Satu prompt per hari; blocker dependency diselesaikan sebelum pekerjaan yang bergantung padanya. Tidak push/PR, rotasi kredensial, destructive migration atau deployment publik tanpa otorisasi yang sesuai. Tema biru tetap, Go/PostgreSQL dan frontend sederhana dipertahankan.
+
+Critical/High adalah gate pemakaian nyata, meskipun perbaikan dijadwalkan lintas hari. Baseline hanya untuk development terbatas sampai uang/security/privacy ditutup. Jangan menggabungkan hari berikutnya ke hari audit. Test bersifat targeted; full release checks hanya pada fase integrasi/rilis dan tidak diulang tanpa perubahan/risiko baru.
+
+## Rencana dan bukti selesai
+
+Dependensi pada tabel bersifat tambahan; tiap baris juga bergantung pada hasil hari sebelumnya. AC mengacu ke [acceptance criteria](acceptance-criteria.md), ID temuan ke [audit baseline](audit-baseline.md).
+
+| Hari | Fokus dan hasil wajib | Dependency / prioritas | Verifikasi yang sesuai saat dikerjakan |
+|---|---|---|---|
+| 01 | Audit baseline, target architecture/peta file, acceptance, backlog, koreksi README dan laporan hari 01 | Snapshot Git/sumber; seluruh temuan terpetakan | Review dokumen; build baseline seluruh package gagal main ganda, file server berhasil. Tanpa automated test/DB/UI |
+| 02 | Fondasi struktur/application wiring: `cmd/server`, executable utilitas terpisah, router/lifecycle/constructor; static assets dan URL tetap. Isolasi init test lama sebelum menjalankannya | H09/M02/M05; AC01 | Format/build; targeted test relevan yang aman pada package pindahan; tanpa full integration DB |
+| 03 | Config bertipe tervalidasi, mode/secret/origin/SSL, pool/deadline/close, env example dan README | Wiring 02; H04/H11/M02; AC02 | Config positive/negative unit + build; DB lifecycle integration hanya bila perlu |
+| 04 | Migration up/status berversi; constraint/indeks relevan, fresh/adoption/upgrade plan, fixture terpisah, rollback guidance; `docs/database.md` | Config 03; H01/H07/H08; AC01/13 | Migration targeted pada DB test fresh/upgrade; backup/approval sebelum perubahan destructive data nyata |
+| 05 | Domain Customer/Service/Order/Item/Payment/Ledger/User/Audit minimal; status operasional/pembayaran terpisah, integer rupiah, validasi/perhitungan; aturan bisnis tertulis | Skema 04; C01/H07; AC06–09 | Unit transition table, money/discount/quantity/edge cases; tanpa DB |
+| 06 | Kontrak repository per use case, adapter postgres context-aware, pagination/filter/array kosong, scan/rows/error handling, transaction abstraction | Domain 05; H10/M01/M02/M04; AC13 | DB terisolasi: create/read/filter/constraint/rollback/not found; hilangkan pola test lama yang berbahaya |
+| 07 | Service/use case layer dan transaction boundary; handler lepas SQL bertahap, clock/ID injection, authorization intent/audit hook | Repository 06; H01/C01; AC07–09 | Unit fake repository untuk aturan/failure/rollback intent; satu DB transaction test jika abstraksi perlu bukti |
+| 08 | HTTP handler tipis, DTO/error JSON, request limit/content type/pagination/method; mulai `docs/api.md` | Service 07; H11/M01/M03/M04; AC13 | HTTP success/invalid/oversized/not found/conflict/unauthorized/internal dengan fake service |
+| 09 | Auth hardening, exact algorithm/claims, generic failure, rate limit, session/cookie/CSRF/logout decision; `docs/security.md` | Config/HTTP 03/08; H04–H06/C02; AC03 | Targeted positive/negative auth, secret startup, claims, limit, cookie/CSRF/logout |
+| 10 | Owner/admin/cashier permission matrix, user create/deactivate/reset/role, bootstrap aman tanpa credential tetap | Auth 09; H02/H03/H06; AC01/04 | Unit/HTTP authorization matrix, DB user constraints bila perlu; audit account events |
+| 11 | Customer/search/history minimal, token tracking kuat/unik, DTO publik minimal, receipt internal terproteksi; `docs/privacy.md` | Role 10; H02; AC05 | Domain/DB/HTTP token/privacy/receipt access checks |
+| 12 | Layanan/harga/durasi/aktif dan snapshot item; kalkulasi server, rounding/diskon disepakati, demo sintetis terpisah | Domain/service 05–07; H07; AC06/07 | Calculation unit + DB snapshot/constraint/history |
+| 13 | Workflow order lengkap, lock/version, milestone, stale conflict, create/update idempotency; `docs/business-rules.md` | Order 12; C01/H07; AC07/08 | Concurrent PostgreSQL goroutines: duplicate/lost update/stale/rollback/invalid transition; race hanya relevan |
+| 14 | Payment terpisah, unique idempotency reference, atomic cash ledger/audit, partial/overpayment/refund rules; `docs/finance.md` | Concurrency 13; C01/H08; AC09 | Wajib unit + PostgreSQL retry/concurrency/rollback/partial/refund/constraint; jangan klaim double-entry |
+| 15 | Shift/kas harian: opening/cash in-out/closing, saldo fisik/sistem/selisih, payment association dan izin | Payment 14, role 10; AC10 | Domain/DB open/close/duplicate shift/payment/reconciliation |
+| 16 | Dashboard/report use cases, omzet dari payment/ledger, date/timezone, pagination, CSV aman; `docs/reports.md` | Payment/shift 14–15; H10/M01; AC11 | DB angka/batas tanggal/failure; query plan hanya bila dataset/risiko relevan |
+| 17 | Audit append-only, event sensitif, metadata minimal/retention, owner filter/page; `docs/audit.md` | Use cases 07–16; M08; AC12 | Audit success/rollback/authz; tanpa data rahasia pada metadata |
+| 18 | Tokens warna/spacing/type dari tema lama; semantic responsive UI, state bersama, safe DOM; `docs/ui.md` | Backend 08–17; C02/M06/M07/L02; AC14/15 | Targeted visual/manual desktop/Android/keyboard/console; tanpa backend suite bila tidak berubah |
+| 19 | UI login/logout/expiry/session dan user management owner; feedback generik, izin konsisten | Auth 09/10, UI 18; H06/M03/M07; AC03/04/15 | Browser success/failure/logout/expired/forbidden/mobile/keyboard; HTTP auth test hanya jika endpoint berubah |
+| 20 | UI POS: customer/service/berat/item/diskon/estimasi/catatan, server total, submit idempotent/receipt | Order/payment 12–14, UI 18; H01/H07/C02; AC07/15 | Focused create/retry/double-click/offline UI; service/handler test jika berubah |
+| 21 | UI antrean/filter/page/detail/status/payment/refund/conflict/thermal receipt; public token | 11/13/14/20; C01/C02/H02/M01; AC05/08/09/15 | Browser filter/conflict/payment retry/mobile/print 58–80mm; integration hanya bila API berubah |
+| 22 | UI dashboard/shift/report/date/CSV/print sesuai role, angka/empty/error jelas | Reporting/shift 15/16, UI 18; H10/M06; AC10/11/15 | Browser fixture angka/role/date/CSV/print/mobile; query test jika berubah |
+| 23 | Manifest/icons, service worker/offline shell/update; tanpa cache sensitif atau offline write queue diam-diam; `docs/pwa.md` | UI 18–22, idempotency 13/14; AC16 | Browser install/offline/recovery/update/cache privacy; tanpa backend test bila tetap |
+| 24 | Security review/fix Critical/High tersisa: input/XSS/IDOR/session/CORS/headers/secrets/error; threat model | Implementasi 09–23; C02/H02/H04–H06/H11; AC03–05/13/14 | Targeted local negative tests, static/dependency check bila tersedia; tanpa pentest agresif publik |
+| 25 | Structured/request logging, recovery, liveness/readiness/deadline, graceful close, metrics minimum; `docs/runbook.md` | Config 03, HTTP/security 08/24; M02/M03/M08; AC02/17 | Targeted health/panic/redaction/shutdown; tanpa full UI |
+| 26 | Ubuntu reproducible: binary + systemd non-root sebagai pilihan sederhana, proxy/tunnel/env/permissions, release/rollback; `docs/deployment.md` | Wiring/ops 02/25; M02/M08; AC17 | Production build/config terisolasi; deployment publik/Cloudflare hanya jika diotorisasi |
+| 27 | Backup/retention/permissions dan restore DB baru, integrity/migration compatibility/RPO/RTO; `docs/backup-restore.md` | Schema/deploy 04/26; M08; AC17 | Restore drill DB terisolasi jika tersedia; jika tidak, non-destructive review dan Not Verified |
+| 28 | CI proporsional format/build/vet/unit + DB job terpisah/race relevan; `docs/testing.md`, README command | Build/test separation dan fitur stabil; H09/M05; AC18 | Command CI yang berubah dijalankan jika environment memungkinkan; tanpa secret production |
+| 29 | Acceptance dan RC: tutup blocker, dokumentasi lengkap/changelog/release checklist/demo sintetis | Semua AC dan temuan direview; AC01–18 | Format/build/unit/security/DB/concurrency/race relevan/migration fresh-upgrade/focused E2E sesuai RC checklist |
+| 30 | Final readiness Verified/Accepted Risk/Not Verified, artifact/version/schema/changelog konsisten, `docs/production-readiness.md`, `RELEASE_REPORT.md` | Gate 29 stabil, izin deployment bila publik; AC01–18 | Final checks sekali; gunakan bukti RC yang masih berlaku, ulang hanya akibat perubahan/risiko. Smoke deploy bila diotorisasi; jika tidak, berhenti pada artifact/prosedur |
+
+## Keputusan dan hambatan yang harus dibawa ke hari berikutnya
+
+- Build package gagal karena struktur entry point, bukan karena Go/dependency tidak tersedia. Jangan menurunkan versi/upgrade dependency tanpa alasan.
+- DB aktual/schema lama belum diperiksa; fresh schema dan create order berbeda. Siapkan DB test dan adoption plan sebelum migration/repository verification, bukan memakai `.env` operasional.
+- Kredensial bootstrap tetap perlu pemeriksaan pemilik pada sistem nyata; audit tidak membuktikan akun sudah aktif dan tidak melakukan rotasi.
+- Ketentuan rounding/diskon/payment/refund/shift dan identitas receipt harus dipastikan sebelum use case/acceptance terkait ditutup.
+- Akses Ubuntu/domain/proxy/tunnel, printer fisik, CI dan media backup/restore belum dibuktikan. Ketidaktersediaan harus dicatat sebagai Not Verified, bukan lulus.
+- Untuk hari 29–30, jadwal bukan alasan melewati Critical/High atau menyebut siap produksi tanpa evidence. Ikuti gate di acceptance criteria.

@@ -1,21 +1,18 @@
-package handlers
+package handler
 
 import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
-	"os"
 	"time"
 
-	"ulaundry/config"
 	"ulaundry/models"
 
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
-	// godotenv dihapus dari sini karena udah diload di config/database.go
 )
 
-func Login(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	var input models.Kasir
 	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
 		http.Error(w, "Format input salah", http.StatusBadRequest)
@@ -24,7 +21,7 @@ func Login(w http.ResponseWriter, r *http.Request) {
 
 	// 1. Cari Kasir di Database
 	var dbPassword, namaLengkap string
-	err := config.DB.QueryRow("SELECT password, nama_lengkap FROM kasir WHERE username = $1", input.Username).Scan(&dbPassword, &namaLengkap)
+	err := h.db.QueryRow("SELECT password, nama_lengkap FROM kasir WHERE username = $1", input.Username).Scan(&dbPassword, &namaLengkap)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			http.Error(w, "Username tidak ditemukan", http.StatusUnauthorized)
@@ -51,8 +48,8 @@ func Login(w http.ResponseWriter, r *http.Request) {
 		"exp":          expirationTime.Unix(),
 	}
 
-	// 4. Ambil Kunci Rahasia dari .env pas mau tanda tangan tiket aja
-	jwtKey := []byte(os.Getenv("JWT_SECRET"))
+	// Kunci diinjeksi saat bootstrap; tidak membaca environment dari handler.
+	jwtKey := []byte(h.jwtSecret)
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := token.SignedString(jwtKey)
