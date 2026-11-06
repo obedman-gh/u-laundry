@@ -24,7 +24,7 @@ func main() {
 	// -------------------------
 
 	// Route Public (Siapa aja boleh akses, termasuk customer buat ngecek)
-	mux.HandleFunc("GET /api/pesanan", handlers.BukaPintuCORS(handlers.GetSemuaPesanan))
+	mux.HandleFunc("GET /api/pesanan/{id}", handlers.BukaPintuCORS(handlers.GetPesananById))
 	// Route buat Filter by Status (Harus ditaruh SEBELUM route {id} biar nggak bentrok kalau ada route id nanti)
 	mux.HandleFunc("GET /api/pesanan/status", handlers.BukaPintuCORS(handlers.GetPesananByStatus))
 	// Route buat Login Kasir
@@ -34,6 +34,8 @@ func main() {
 
 	// Route Private (KHUSUS KASIR YANG UDAH LOGIN)
 	// Perhatiin bungkusannya lapis dua: BukaPintuCORS(ValidasiJWT(FungsiUtama))
+	// Melihat seluruh pesanan
+	mux.HandleFunc("GET /api/pesanan", handlers.BukaPintuCORS(handlers.ValidasiJWT(handlers.GetSemuaPesanan)))
 	mux.HandleFunc("POST /api/pesanan", handlers.BukaPintuCORS(handlers.ValidasiJWT(handlers.BikinPesananBaru)))
 	// Route buat Update (Pake method PUT)
 	mux.HandleFunc("PUT /api/pesanan/{id}", handlers.BukaPintuCORS(handlers.ValidasiJWT(handlers.UpdateStatusPesanan)))
