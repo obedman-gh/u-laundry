@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"html"
 	"net/http"
 
 	// Ganti "ulaundry" dengan nama module lu di go.mod (kalo beda)
@@ -72,10 +73,8 @@ func BikinPesananBaru(w http.ResponseWriter, r *http.Request) {
 
 // Fungsi buat UPDATE status pesanan (PUT Request)
 func UpdateStatusPesanan(w http.ResponseWriter, r *http.Request) {
-	// Ambil ID dari URL (misal: /api/pesanan/ORD-001)
 	idPesanan := r.PathValue("id")
 
-	// Kita baca status baru dari Body JSON
 	var input struct {
 		Status string `json:"status"`
 	}
@@ -85,40 +84,52 @@ func UpdateStatusPesanan(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Eksekusi UPDATE ke Database
-	// Cari bagian ini di UpdateStatusPesanan lu, tambahin logika waktu selesainya
-	query := `UPDATE pesanan SET status = $1 WHERE id_pesanan = $2`
-
-	// --- TAMBAHIN BLOK INI ---
-	if input.Status == "Selesai & Siap Diambil" {
-		query = `UPDATE pesanan SET status = $1, waktu_selesai_real = CURRENT_TIMESTAMP WHERE id_pesanan = $2`
-	}
-	// -------------------------
-
-	result, err := config.DB.Exec(query, input.Status, idPesanan)
+	// 1. MULAI TRANSAKSI DATABASE (Poin 4)
+	tx, err := config.DB.Begin()
 	if err != nil {
-		http.Error(w, "Gagal update database", http.StatusInternalServerError)
+		http.Error(w, "Gagal memulai transaksi server", http.StatusInternalServerError)
 		return
 	}
+	// Kalau nanti ada error di tengah jalan, otomatis di-Rollback (dibatalkan semua)
+	defer tx.Rollback()
 
-	// Ngecek apakah ID-nya beneran ada (RowsAffected)
-	rowsAffected, _ := result.RowsAffected()
-	if rowsAffected == 0 {
+	// 2. CEK STATUS LAMA & TOTAL BIAYA (Buat Poin 5)
+	var statusLama string
+	var totalBiaya int
+	err = tx.QueryRow("SELECT status, total_biaya FROM pesanan WHERE id_pesanan = $1", idPesanan).Scan(&statusLama, &totalBiaya)
+	if err != nil {
 		http.Error(w, "Pesanan tidak ditemukan", http.StatusNotFound)
 		return
 	}
 
-	// --- LOGIKA KASIR OTOMATIS ---
-	if input.Status == "Sudah Lunas" {
-		var nominal int
-		// Tarik total biaya pesanan ini
-		err := config.DB.QueryRow("SELECT total_biaya FROM pesanan WHERE id_pesanan = $1", idPesanan).Scan(&nominal)
-		if err == nil {
-			// Catat ke buku kas sebagai DEBIT (Pemasukan)
-			config.DB.Exec("INSERT INTO keuangan (tipe, keterangan, nominal) VALUES ('DEBIT', $1, $2)", "Pembayaran "+idPesanan, nominal)
+	// 3. UPDATE STATUS PESANAN (Sekaligus nangkep waktu selesai kalau statusnya pas)
+	queryUpdate := `UPDATE pesanan SET status = $1`
+	if input.Status == "Selesai & Siap Diambil" {
+		queryUpdate += `, waktu_selesai_real = CURRENT_TIMESTAMP`
+	}
+	queryUpdate += ` WHERE id_pesanan = $2`
+
+	_, err = tx.Exec(queryUpdate, input.Status, idPesanan)
+	if err != nil {
+		http.Error(w, "Gagal update database pesanan", http.StatusInternalServerError)
+		return // Terjadi error, defer tx.Rollback() akan otomatis jalan
+	}
+
+	// 4. LOGIKA KEUANGAN AMAN (Mencegah Double Debit)
+	// Hanya catat ke buku kas KALAU status barunya "Sudah Lunas" DAN status lamanya BUKAN "Sudah Lunas"
+	if input.Status == "Sudah Lunas" && statusLama != "Sudah Lunas" {
+		_, err = tx.Exec("INSERT INTO keuangan (tipe, keterangan, nominal) VALUES ('DEBIT', $1, $2)", "Pembayaran "+idPesanan, totalBiaya)
+		if err != nil {
+			http.Error(w, "Gagal mencatat buku kas keuangan", http.StatusInternalServerError)
+			return // Terjadi error, status lunas di tabel pesanan juga ikut DIBATALKAN karena satu transaksi
 		}
 	}
-	// ------------------------------
+
+	// 5. COMMIT TRANSAKSI (Simpan permanen ke database)
+	if err = tx.Commit(); err != nil {
+		http.Error(w, "Gagal menyimpan transaksi", http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
@@ -182,20 +193,25 @@ func CetakStruk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// --- LOGIKA AMAN UNTUK POINTER ---
-	// Cek apakah waktu selesai masih kosong (nil) di database
+	// --- CUKUP UBAH BAGIAN TENGAH FUNGSI CetakStruk ---
+	// Poin 10: HTML Escaping (Membersihkan inputan jahat dari hacker)
+	safeID := html.EscapeString(p.IDPesanan)
+	safeNama := html.EscapeString(p.NamaCustomer)
+	safeLayanan := html.EscapeString(p.Layanan)
+	safeStatus := html.EscapeString(p.Status)
+
 	strWaktuSelesai := "-"
 	if p.WaktuSelesaiReal != nil {
-		strWaktuSelesai = *p.WaktuSelesaiReal
+		strWaktuSelesai = html.EscapeString(*p.WaktuSelesaiReal)
 	}
-	// ---------------------------------
+	safeWaktuPesan := html.EscapeString(p.WaktuPesan)
 
 	// Bikin desain struk HTML
 	htmlStruk := `
 	<!DOCTYPE html>
 	<html>
 	<head>
-		<title>Struk ` + p.IDPesanan + `</title>
+		<title>Struk ` + safeID + `</title>
 		<style>
 			body { font-family: monospace; width: 300px; margin: 0 auto; padding: 10px; color: #000; }
 			.center { text-align: center; }
@@ -211,21 +227,22 @@ func CetakStruk(w http.ResponseWriter, r *http.Request) {
 		</div>
 		<div class="line"></div>
 		<p>
-			ID Order : ` + p.IDPesanan + `<br>
-			Nama     : ` + p.NamaCustomer + `<br>
-			Layanan  : ` + p.Layanan + `<br>
-			Mulai    : ` + p.WaktuPesan + `<br>
+			ID Order : ` + safeID + `<br>
+			Nama     : ` + safeNama + `<br>
+			Layanan  : ` + safeLayanan + `<br>
+			Mulai    : ` + safeWaktuPesan + `<br>
 			Selesai  : ` + strWaktuSelesai + `<br>
 		</p>
 		<div class="line"></div>
 		<h3>TOTAL: Rp ` + fmt.Sprintf("%d", p.TotalBiaya) + `</h3>
 		<div class="line"></div>
 		<p class="center">
-			Status: ` + p.Status + `<br>
+			Status: ` + safeStatus + `<br>
 			<i>Terima kasih telah mempercayakan<br>cucian Anda kepada kami!</i>
 		</p>
 	</body>
 	</html>`
+	// ----------------------------------------------------
 
 	// Balikin response-nya sebagai HTML
 	w.Header().Set("Content-Type", "text/html")

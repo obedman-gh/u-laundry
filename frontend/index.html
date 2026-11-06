@@ -1,44 +1,74 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="id">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ULaundry - Perumahan Viola</title>
     <style>
-        body { font-family: Arial, sans-serif; background-color: #f4f4f9; padding: 20px; }
-        .card { background: white; padding: 15px; margin-bottom: 10px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        h2 { color: #333; }
-        .status { font-weight: bold; color: #007bff; }
+      body {
+        font-family: Arial, sans-serif;
+        background-color: #f4f4f9;
+        padding: 20px;
+      }
+      .card {
+        background: white;
+        padding: 15px;
+        margin-bottom: 10px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      h2 {
+        color: #333;
+      }
+      .status {
+        font-weight: bold;
+        color: #007bff;
+      }
     </style>
-</head>
-<body>
-
+  </head>
+  <body>
     <h2>👕 Daftar Antrean ULaundry</h2>
     <div id="tempat-pesanan">Lagi ngambil data dari server Go...</div>
 
     <script>
-        // Ini Javascript buat ngambil JSON dari API lu dan ngubahnya jadi tampilan HTML
-        fetch('/api/pesanan')
-            .then(response => response.json())
-            .then(data => {
-                const wadah = document.getElementById('tempat-pesanan');
-                wadah.innerHTML = ''; // Kosongin teks loading
+      // 1. URL dibikin relatif (cuma /api/...) biar ngikutin otomatis lu lagi buka di localhost atau ulaundry
+      // 2. Selipin tiket Bearer (asumsinya lu udah bikin fitur login yang nyimpen token ke localStorage)
+      const token = localStorage.getItem("token");
 
-                // Looping data pesanan
-                data.forEach(pesanan => {
-                    wadah.innerHTML += `
+      fetch("/api/pesanan", {
+        method: "GET",
+        headers: {
+          Authorization: "Bearer " + token,
+          "Content-Type": "application/json",
+        },
+      })
+        .then((res) => {
+          if (res.status === 401) {
+            alert("Woy, login kasir dulu!"); // Tendang ke halaman login kalau belum login
+            window.location.href = "/login.html";
+          }
+          return res.json();
+        })
+        .then((data) => {
+          const wadah = document.getElementById("tempat-pesanan");
+          wadah.innerHTML = ""; // Kosongin teks loading
+
+          // Looping data pesanan
+          data.forEach((pesanan) => {
+            wadah.innerHTML += `
                         <div class="card">
                             <strong>${pesanan.nama_customer}</strong> (${pesanan.id_pesanan})<br>
                             Layanan: ${pesanan.layanan} <br>
-                            Total: Rp ${pesanan.total_biaya.toLocaleString('id-ID')} <br>
+                            Total: Rp ${pesanan.total_biaya.toLocaleString("id-ID")} <br>
                             Status: <span class="status">${pesanan.status}</span>
                         </div>
                     `;
-                });
-            })
-            .catch(error => {
-                document.getElementById('tempat-pesanan').innerHTML = 'Gagal ngambil data coy!';
-            });
+          });
+        })
+        .catch((error) => {
+          document.getElementById("tempat-pesanan").innerHTML =
+            "Gagal ngambil data coy!";
+        });
     </script>
-</body>
+  </body>
 </html>
