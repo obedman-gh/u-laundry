@@ -1,6 +1,12 @@
 # Backlog 30 Hari ULaundry
 
-Baseline 7 November 2026, commit `94ffc77`. Acuan urutan/scope: `F:\project\ulaundry\PROMPTS_30_HARI_ULaundry_PRODUCTION.md`; instruksi kerja: `../AGENTS.md` dari root repository. Hari adalah urutan pekerjaan, bukan janji selesai pada tanggal kalender. Hari 01–03 sudah diimplementasikan, dengan bukti pada `docs/progress/day-01.md` sampai `day-03.md`; hari 04–30 **belum dikerjakan**. H09 (build), H04 (startup config) dan H11 (CORS/preflight) tertangani pada lingkup implementasi/unit/HTTP yang tercatat; konfigurasi production aktual belum diverifikasi. M02/M05 dipersempit dengan lifecycle/pool/deadline/test sintetis, tetapi query request-context, PostgreSQL integration, security/session dan ledger tests masih backlog. Temuan lain tetap terbuka selain koreksi dokumentasi L01.
+Baseline 7 November 2026, commit `94ffc77`. Acuan urutan/scope: `F:\project\ulaundry\PROMPTS_30_HARI_ULaundry_PRODUCTION.md`; instruksi kerja: `../AGENTS.md` dari root repository. Hari adalah urutan pekerjaan, bukan janji selesai pada tanggal kalender. Hari 01–09 sudah diimplementasikan, dengan bukti pada `docs/progress/day-01.md` sampai `day-09.md`; hari 10–30 **belum dikerjakan**. H09 (build), H04 (startup config), H11 (CORS/preflight), migration/domain/repository dan service aktif memiliki bukti terarah. Ini belum membuktikan import/cutover/konfigurasi production atau menutup acceptance security/UI/operasional; lihat batas implementasi berikut.
+
+Pembaruan hari 07: service terpisah sudah di-wire ke handler/root, dengan clock/ID/token injection, authorization intent dan audit atomik. Handler bebas SQL/transaksi; payment/status terpisah dan total katalog server aktif pada tabel domain. Unit fake dan satu alur payment-ledger-audit PostgreSQL lulus. Catatan hari 07 ini dipertahankan sebagai ringkasan workflow; status terbaru mengikuti pembaruan hari 09. Import/cutover/akun legacy belum ditangani; auth/session/UI/operasional/release acceptance masih wajib. Lihat [architecture.md](architecture.md) dan [laporan hari 07](progress/day-07.md).
+
+Pembaruan hari 08: partial HTTP yang sudah ada dituntaskan dengan error JSON berkode dan ID server, validasi DTO/body/query/path, penolakan JSON duplikat, routing API 404/405/HEAD, error auth/CORS dan recovery aman. Pesan login kompatibel. HTTP/app tests, empat test JavaScript, build seluruh package dan vet terarah lulus tanpa DB. Ini bukti historis hari 08; status auth terbaru mengikuti pembaruan hari 09. Lihat [laporan hari 08](progress/day-08.md).
+
+Pembaruan hari 09: autentikasi memakai cookie HttpOnly, PostgreSQL sessions dan audit anonim, CSRF/logout/revocation, claims HS256/issuer/audience/iat/exp/identity-role serta limiter/password policy. Unit/HTTP/config/frontend terarah dan integration PostgreSQL/TLS (upgrade 4→5, revocation dan audit rollback) lulus. Hari 10–30 tetap terbuka; berikutnya bootstrap owner/manajemen staf. Lihat [security.md](security.md) dan [laporan hari 09](progress/day-09.md).
 
 ## Aturan pelaksanaan
 
@@ -48,8 +54,9 @@ Dependensi pada tabel bersifat tambahan; tiap baris juga bergantung pada hasil h
 ## Keputusan dan hambatan yang harus dibawa ke hari berikutnya
 
 - Build package gagal karena struktur entry point, bukan karena Go/dependency tidak tersedia. Jangan menurunkan versi/upgrade dependency tanpa alasan.
-- DB aktual/schema lama belum diperiksa; fresh schema dan create order berbeda. Siapkan DB test dan adoption plan sebelum migration/repository verification, bukan memakai `.env` operasional.
+- DB aktual/schema lama belum diperiksa; fresh schema dan create order berbeda. Hari 04 menyediakan DB test/protokol migration dan adoption plan di `docs/database.md`; inventaris/backup/restore salinan wajib sebelum upgrade data nyata. Jangan memakai `.env` operasional untuk integration test.
 - Kredensial bootstrap tetap perlu pemeriksaan pemilik pada sistem nyata; audit tidak membuktikan akun sudah aktif dan tidak melakukan rotasi.
 - Ketentuan rounding/diskon/payment/refund/shift dan identitas receipt harus dipastikan sebelum use case/acceptance terkait ditutup.
+- Pilihan awal domain hari 05 ada di `docs/business-rules.md`: rounding per baris, diskon nominal owner/admin, DP, pengambilan lunas dan cancellation guard; tinjau sebelum wiring operasional. Domain int64/snapshot/ID belum cocok seluruhnya dengan skema tiga tabel int4; siapkan migration additive atau batas adapter yang jelas.
 - Akses Ubuntu/domain/proxy/tunnel, printer fisik, CI dan media backup/restore belum dibuktikan. Ketidaktersediaan harus dicatat sebagai Not Verified, bukan lulus.
 - Untuk hari 29–30, jadwal bukan alasan melewati Critical/High atau menyebut siap produksi tanpa evidence. Ikuti gate di acceptance criteria.

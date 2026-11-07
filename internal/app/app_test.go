@@ -17,14 +17,13 @@ import (
 )
 
 type lifecycleDB struct {
-	handler.Database // SQL is intentionally unavailable to lifecycle tests.
-	closeCount       atomic.Int32
-	closeErr         error
-	pingCount        atomic.Int32
-	pingErr          error
+	closeCount atomic.Int32
+	closeErr   error
+	pingCount  atomic.Int32
+	pingErr    error
 }
 
-func (db *lifecycleDB) Ping() error {
+func (db *lifecycleDB) Check(context.Context) error {
 	db.pingCount.Add(1)
 	return db.pingErr
 }
@@ -41,11 +40,11 @@ func TestNewWiresDatabaseAndHTTP(t *testing.T) {
 		want int
 	}{
 		{"healthy", nil, http.StatusOK},
-		{"unavailable", errors.New("synthetic database failure"), http.StatusInternalServerError},
+		{"unavailable", errors.New("synthetic database failure"), http.StatusServiceUnavailable},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db := &lifecycleDB{pingErr: tc.err}
-			a := New(config.Config{TrustedOrigins: []string{"https://fixture.invalid"}}, db)
+			a := New(config.Config{TrustedOrigins: []string{"https://fixture.invalid"}}, db, handler.Dependencies{Health: db})
 			rr := httptest.NewRecorder()
 			req := httptest.NewRequest("GET", "/api/health", nil)
 			req.Header.Set("Origin", "https://fixture.invalid")
@@ -86,7 +85,7 @@ func TestServeShutdown(t *testing.T) {
 				grace = 20 * time.Millisecond
 			}
 			db := &lifecycleDB{}
-			a := New(config.Config{HTTP: config.HTTP{ShutdownTimeout: grace}}, db)
+			a := New(config.Config{HTTP: config.HTTP{ShutdownTimeout: grace}}, db, handler.Dependencies{Health: db})
 			started, release, finished := make(chan struct{}), make(chan struct{}), make(chan struct{})
 			var releaseOnce sync.Once
 			releaseRequest := func() { releaseOnce.Do(func() { close(release) }) }
@@ -171,7 +170,7 @@ func awaitSignal(t *testing.T, signal <-chan struct{}) {
 func TestRunClosesDatabaseOnListenFailure(t *testing.T) {
 	closeErr := errors.New("synthetic close failure")
 	db := &lifecycleDB{closeErr: closeErr}
-	a := New(config.Config{HTTP: config.HTTP{Address: "127.0.0.1:invalid-port"}}, db)
+	a := New(config.Config{HTTP: config.HTTP{Address: "127.0.0.1:invalid-port"}}, db, handler.Dependencies{Health: db})
 	err := a.Run(context.Background())
 	if !errors.Is(err, closeErr) || db.closeCount.Load() != 1 {
 		t.Fatalf("listener failure lost cleanup error or DB close: %v", err)
@@ -188,7 +187,7 @@ func TestServeReturnsAcceptAndCloseErrors(t *testing.T) {
 	acceptErr := errors.New("synthetic listener failure")
 	closeErr := errors.New("synthetic close failure")
 	db := &lifecycleDB{closeErr: closeErr}
-	a := New(config.Config{}, db)
+	a := New(config.Config{}, db, handler.Dependencies{Health: db})
 	err := a.Serve(context.Background(), failedListener{err: acceptErr})
 	if !errors.Is(err, acceptErr) || !errors.Is(err, closeErr) || db.closeCount.Load() != 1 {
 		t.Fatalf("server/cleanup error not propagated: %v", err)

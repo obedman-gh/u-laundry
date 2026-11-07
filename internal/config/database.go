@@ -1,11 +1,35 @@
 package config
 
 import (
+	"errors"
 	"net"
 	"net/url"
+	"os"
 	"strings"
 	"time"
 )
+
+// LoadDatabase is for operational commands: identical DB/mode policy without
+// requiring unrelated HTTP, JWT or cookie settings. Environment overrides .env.
+func LoadDatabase() (Database, error) {
+	if err := loadEnvironment(); err != nil {
+		return Database{}, err
+	}
+	return ParseDatabase(os.Getenv)
+}
+
+func ParseDatabase(getenv func(string) string) (Database, error) {
+	p := parser{get: getenv}
+	mode := Mode(p.text("APP_ENV", "development"))
+	if mode != Development && mode != Test && mode != Production {
+		p.fail("APP_ENV", "harus development, test, atau production")
+	}
+	d := p.database(mode == Production)
+	if len(p.errs) > 0 {
+		return Database{}, errors.Join(p.errs...)
+	}
+	return d, nil
+}
 
 func (p *parser) database(production bool) Database {
 	d := Database{

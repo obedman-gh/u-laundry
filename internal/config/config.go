@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/joho/godotenv"
 )
@@ -50,7 +51,7 @@ const (
 	Production  Mode = "production"
 )
 
-// Cookie settings are validated now; cookie sessions are implemented separately.
+// Cookie settings apply to the host-only staff session cookie.
 type Cookie struct {
 	Secret   string
 	Secure   bool
@@ -58,23 +59,35 @@ type Cookie struct {
 }
 
 type Config struct {
-	Environment    Mode
-	Database       Database
-	HTTP           HTTP
-	JWTSecret      string
-	Cookie         Cookie
-	TrustedOrigins []string
-	LogLevel       slog.Level
-	PublicBaseURL  string
+	Environment     Mode
+	Database        Database
+	HTTP            HTTP
+	JWTSecret       string
+	JWTIssuer       string
+	JWTAudience     string
+	SessionLifetime time.Duration
+	LoginLimit      int
+	LoginWindow     time.Duration
+	Cookie          Cookie
+	TrustedOrigins  []string
+	LogLevel        slog.Level
+	PublicBaseURL   string
 }
 
 // System environment takes precedence over .env. Missing .env is allowed for
 // deployment; unreadable or malformed files are startup failures.
 func Load() (Config, error) {
-	if err := godotenv.Load(); err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return Config{}, errors.New("file .env tidak dapat dibaca atau formatnya tidak valid")
+	if err := loadEnvironment(); err != nil {
+		return Config{}, err
 	}
 	return Parse(os.Getenv)
+}
+
+func loadEnvironment() error {
+	if err := godotenv.Load(); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return errors.New("file .env tidak dapat dibaca atau formatnya tidak valid")
+	}
+	return nil
 }
 
 // Parse is pure with respect to environment/filesystem, so unit tests supply
@@ -96,6 +109,23 @@ func Parse(getenv func(string) string) (Config, error) {
 		Cookie:        Cookie{Secret: getenv("COOKIE_SECRET"), SameSite: p.text("COOKIE_SAME_SITE", "lax")},
 		PublicBaseURL: p.text("PUBLIC_BASE_URL", "http://localhost:8080"),
 	}
+	c.JWTIssuer = p.text("JWT_ISSUER", c.PublicBaseURL)
+	c.JWTAudience = p.text("JWT_AUDIENCE", "ulaundry-staff")
+	c.SessionLifetime = p.duration("SESSION_TTL", 8*time.Hour)
+	c.LoginLimit = p.integer("LOGIN_RATE_LIMIT", 10, 1)
+	c.LoginWindow = p.duration("LOGIN_RATE_WINDOW", time.Minute)
+	if c.JWTIssuer == "" || len(c.JWTIssuer) > 200 || invalidAuthIdentifier(c.JWTIssuer) {
+		p.fail("JWT_ISSUER", "harus identifier eksplisit tanpa whitespace, maksimal 200 byte")
+	}
+	if c.JWTAudience == "" || len(c.JWTAudience) > 100 || invalidAuthIdentifier(c.JWTAudience) {
+		p.fail("JWT_AUDIENCE", "harus identifier eksplisit tanpa whitespace, maksimal 100 byte")
+	}
+	if c.SessionLifetime < 15*time.Minute || c.SessionLifetime > 12*time.Hour || c.SessionLifetime%time.Second != 0 {
+		p.fail("SESSION_TTL", "harus 15m sampai 12h dalam detik penuh")
+	}
+	if c.LoginLimit > 100 || c.LoginWindow < time.Second || c.LoginWindow > time.Hour {
+		p.fail("LOGIN_RATE_LIMIT/LOGIN_RATE_WINDOW", "limit maksimal 100 dan window 1s sampai 1h")
+	}
 	if c.Environment != Development && c.Environment != Test && c.Environment != Production {
 		p.fail("APP_ENV", "harus development, test, atau production")
 	}
@@ -108,6 +138,9 @@ func Parse(getenv func(string) string) (Config, error) {
 		p.fail("PUBLIC_BASE_URL", "harus URL origin tanpa user, path, query atau fragment; production wajib HTTPS")
 	} else {
 		c.PublicBaseURL = base
+		if getenv("JWT_ISSUER") == "" {
+			c.JWTIssuer = base
+		}
 	}
 	host, port, err := net.SplitHostPort(c.HTTP.Address)
 	if err != nil || !validPort(port) || strings.ContainsAny(host, " /\\\t\r\n") {
@@ -249,4 +282,8 @@ func canonicalOrigin(value string, requireHTTPS bool) (string, error) {
 		host = "[" + host + "]"
 	}
 	return u.Scheme + "://" + host, nil
+}
+
+func invalidAuthIdentifier(value string) bool {
+	return strings.IndexFunc(value, func(r rune) bool { return unicode.IsSpace(r) || unicode.IsControl(r) || unicode.Is(unicode.Cf, r) }) >= 0
 }

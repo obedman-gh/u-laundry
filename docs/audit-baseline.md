@@ -14,6 +14,12 @@ Prioritas: **Critical** = risiko langsung integritas uang atau pengambilalihan s
 
 ## Inventaris dan fondasi yang tersedia
 
+Pembaruan hari 04: H08 pada sisi migration skema sudah ditangani oleh runner berversi/transaksional, history/checksum, fixture/demo terpisah serta 17 skenario PostgreSQL 16.14 fresh/upgrade test; lihat [database.md](database.md) dan [laporan hari 04](progress/day-04.md). Constraint uang/ledger/username/timestamp dan FK opsional menutup sebagian H07. Schema operasional belum diperiksa; C01/idempotensi ledger, H01/create tanpa status, bootstrap aman dan risiko security lain tetap terbuka. Referensi `init.sql` di tabel temuan berikut tetap bukti baseline historis, bukan command setup aktif.
+
+Pembaruan hari 06: filter status legacy kini benar-benar WHERE/bind dengan request context dan iterator/scan/close handling, sehingga bagian bug filter M01 diperbaiki. Adapter/storage domain baru menambahkan transaksi/constraint/locking/idempotency yang diuji terisolasi, tetapi belum di-wire ke server; C01 pada posting uang legacy dan H01/H07 pada create aktif belum ditutup. Bukti serta batas implementasi ada di [laporan hari 06](progress/day-06.md).
+
+Pembaruan hari 07: server telah memakai service/repository domain; handler bebas SQL/transaksi, total klien ditolak, status/payment terpisah dan audit atomik diuji pada satu alur PostgreSQL. Detail/struk kini staf-only, tracking publik memakai token, laporan memeriksa role dan error agregasi. Ini memperbaiki jalur baru terkait C01/H01/H02/H07/H10 dan sebagian H03/H05, tetapi tidak merekonsiliasi uang/data legacy atau membuktikan acceptance produksi. Auth/session/rate-limit/bootstrap, frontend XSS/localStorage, import/cutover/restore dan bukti operasional tetap terbuka. Referensi temuan di bawah adalah baseline historis, bukan daftar endpoint aktif; lihat [arsitektur](architecture.md) dan [laporan hari 07](progress/day-07.md).
+
 | Area | Bukti baseline |
 |---|---|
 | Entry point | Empat `cmd/*.go`, semuanya `package main` dengan `main()` |
@@ -91,3 +97,7 @@ Baseline di atas tetap merujuk snapshot hari 01. H09 ditutup oleh build hari 02;
 - Tidak menjalankan automated test, static analysis, race, browser, server, migration atau integration DB. Temuan runtime belum direproduksi, kecuali kegagalan build yang benar-benar dijalankan.
 
 Tidak mengubah kode, SQL, dependency, warna atau data. Bug filter/empty state mengubah perilaku dan membutuhkan DB/UI verification; create/status/uang/security lebih berisiko. Seluruhnya masuk [backlog](backlog-30-days.md) dan [acceptance](acceptance-criteria.md). Selesai audit tidak menutup temuan dan tidak mengizinkan rilis. Blocker Critical/High harus ditutup sebelum pemakaian nyata/eksposur publik.
+
+## Pembaruan hari 08 — HTTP boundary
+
+Partial implementation hari 08 yang ada dilengkapi tanpa menimpa pekerjaan hari 01–07. M03 bagian body/content type/error contract/recovery dan H11 bagian API method/static fallback kini memiliki bukti HTTP/app terarah; JSON berkode berisi request_id server, unknown/duplicate/oversized request ditolak dan path API tidak jatuh ke FileServer. Frontend login membaca error.message sebagai teks; UI daftar safe DOM, session/rate-limit, request logging dan acceptance security/operasional tetap terbuka. Seluruh detail/batas bukti ada di [laporan hari 08](progress/day-08.md); bukan penutupan semua temuan baseline.

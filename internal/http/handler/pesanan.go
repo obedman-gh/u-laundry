@@ -1,269 +1,194 @@
 package handler
 
 import (
-	"encoding/json"
-	"fmt"
-	"html"
+	"bytes"
+	"html/template"
 	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
+	"time"
 
-	"ulaundry/models"
+	"ulaundry/internal/domain"
+	"ulaundry/internal/http/dto"
+	"ulaundry/internal/http/middleware"
+	"ulaundry/internal/http/response"
+	"ulaundry/internal/repository"
+	"ulaundry/internal/service"
 )
 
-// Pindahin fungsi getSemuaPesanan dari main.go kemaren
-func (h *Handler) GetSemuaPesanan(w http.ResponseWriter, r *http.Request) {
-	// Panggil koneksi DB dari package config
-	// Ubah query SELECT lu di GetSemuaPesanan (dan fungsi filter status) jadi kayak gini:
-	query := `
-	SELECT 
-		id_pesanan, nama_customer, layanan, total_biaya, status,
-		TO_CHAR(waktu_pesan, 'YYYY-MM-DD HH24:MI:SS'),
-		TO_CHAR(waktu_perkiraan_selesai, 'YYYY-MM-DD HH24:MI:SS'),
-		TO_CHAR(waktu_selesai_real, 'YYYY-MM-DD HH24:MI:SS')
-	FROM pesanan
-`
-	rows, err := h.db.Query(query)
-
-	if err != nil {
-		http.Error(w, "Gagal query ke database", http.StatusInternalServerError)
-		return
+func orderView(record repository.OrderRecord) dto.OrderResponse {
+	o := record.Order
+	names := make([]string, 0, len(o.Items()))
+	for _, item := range o.Items() {
+		names = append(names, item.ServiceName)
 	}
-	defer rows.Close()
-
-	var daftarPesanan []models.Pesanan
-	for rows.Next() {
-		var p models.Pesanan
-		// ... lalu di dalam perulangan for rows.Next() ..., update Scan-nya:
-		if err := rows.Scan(&p.IDPesanan, &p.NamaCustomer, &p.Layanan, &p.TotalBiaya, &p.Status, &p.WaktuPesan, &p.WaktuPerkiraanSelesai, &p.WaktuSelesaiReal); err != nil {
-			// ...
-			http.Error(w, "Gagal baca data", http.StatusInternalServerError)
-			return
-		}
-		daftarPesanan = append(daftarPesanan, p)
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(daftarPesanan)
+	return dto.OrderResponse{ID: o.ID(), Customer: o.Customer().Name, Services: strings.Join(names, ", "), Total: int64(o.Total()), Status: string(o.Status()), PaymentStatus: string(o.PaymentStatus()), Version: record.Version, CreatedAt: o.CreatedAt(), EstimatedReadyAt: o.EstimatedReadyAt(), ReadyAt: nullableTime(o.ReadyAt())}
 }
-
-// Pindahin fungsi bikinPesananBaru
-func (h *Handler) BikinPesananBaru(w http.ResponseWriter, r *http.Request) {
-	var p models.Pesanan
-	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
-		http.Error(w, "Format JSON salah", http.StatusBadRequest)
-		return
-	}
-
-	// Cari bagian query INSERT di BikinPesananBaru, lalu ganti jadi:
-	query := `INSERT INTO pesanan (id_pesanan, nama_customer, layanan, total_biaya, waktu_perkiraan_selesai) 
-    	      VALUES ($1, $2, $3, $4, $5)`
-	_, err := h.db.Exec(query, p.IDPesanan, p.NamaCustomer, p.Layanan, p.TotalBiaya, p.WaktuPerkiraanSelesai)
-	if err != nil {
-		http.Error(w, "Gagal simpan ke database", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(map[string]string{"pesan": "Pesanan " + p.IDPesanan + " berhasil disimpan!"})
-}
-
-// --- TAMBAHIN KODE INI DI BAWAH ---
-
-// Fungsi buat UPDATE status pesanan (PUT Request)
-func (h *Handler) UpdateStatusPesanan(w http.ResponseWriter, r *http.Request) {
-	idPesanan := r.PathValue("id")
-
-	var input struct {
-		Status string `json:"status"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		http.Error(w, "Format JSON salah", http.StatusBadRequest)
-		return
-	}
-
-	// 1. MULAI TRANSAKSI DATABASE (Poin 4)
-	tx, err := h.db.Begin()
-	if err != nil {
-		http.Error(w, "Gagal memulai transaksi server", http.StatusInternalServerError)
-		return
-	}
-	// Kalau nanti ada error di tengah jalan, otomatis di-Rollback (dibatalkan semua)
-	defer tx.Rollback()
-
-	// 2. CEK STATUS LAMA & TOTAL BIAYA (Buat Poin 5)
-	var statusLama string
-	var totalBiaya int
-	err = tx.QueryRow("SELECT status, total_biaya FROM pesanan WHERE id_pesanan = $1", idPesanan).Scan(&statusLama, &totalBiaya)
-	if err != nil {
-		http.Error(w, "Pesanan tidak ditemukan", http.StatusNotFound)
-		return
-	}
-
-	// 3. UPDATE STATUS PESANAN (Sekaligus nangkep waktu selesai kalau statusnya pas)
-	queryUpdate := `UPDATE pesanan SET status = $1`
-	if input.Status == "Selesai & Siap Diambil" {
-		queryUpdate += `, waktu_selesai_real = CURRENT_TIMESTAMP`
-	}
-	queryUpdate += ` WHERE id_pesanan = $2`
-
-	_, err = tx.Exec(queryUpdate, input.Status, idPesanan)
-	if err != nil {
-		http.Error(w, "Gagal update database pesanan", http.StatusInternalServerError)
-		return // Terjadi error, defer tx.Rollback() akan otomatis jalan
-	}
-
-	// 4. LOGIKA KEUANGAN AMAN (Mencegah Double Debit)
-	// Hanya catat ke buku kas KALAU status barunya "Sudah Lunas" DAN status lamanya BUKAN "Sudah Lunas"
-	if input.Status == "Sudah Lunas" && statusLama != "Sudah Lunas" {
-		_, err = tx.Exec("INSERT INTO keuangan (tipe, keterangan, nominal) VALUES ('DEBIT', $1, $2)", "Pembayaran "+idPesanan, totalBiaya)
-		if err != nil {
-			http.Error(w, "Gagal mencatat buku kas keuangan", http.StatusInternalServerError)
-			return // Terjadi error, status lunas di tabel pesanan juga ikut DIBATALKAN karena satu transaksi
-		}
-	}
-
-	// 5. COMMIT TRANSAKSI (Simpan permanen ke database)
-	if err = tx.Commit(); err != nil {
-		http.Error(w, "Gagal menyimpan transaksi", http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"pesan": "Status pesanan " + idPesanan + " berhasil diubah jadi " + input.Status,
-	})
-}
-
-// Fungsi buat Filter pesanan berdasarkan status (GET Request)
+func (h *Handler) GetSemuaPesanan(w http.ResponseWriter, r *http.Request) { h.list(w, r, false) }
 func (h *Handler) GetPesananByStatus(w http.ResponseWriter, r *http.Request) {
-	// Ambil parameter status dari URL query (misal: /api/pesanan/status?q=Selesai)
-	statusQuery := r.URL.Query().Get("q")
-
-	if statusQuery == "" {
-		http.Error(w, "Query status (q) tidak boleh kosong", http.StatusBadRequest)
-		return
-	}
-
-	// Panggil database pake filter WHERE status = $1
-	query := `
-	SELECT 
-		id_pesanan, nama_customer, layanan, total_biaya, status,
-		TO_CHAR(waktu_pesan, 'YYYY-MM-DD HH24:MI:SS'),
-		TO_CHAR(waktu_perkiraan_selesai, 'YYYY-MM-DD HH24:MI:SS'),
-		TO_CHAR(waktu_selesai_real, 'YYYY-MM-DD HH24:MI:SS')
-	FROM pesanan
-`
-	rows, err := h.db.Query(query)
-
-	if err != nil {
-		http.Error(w, "Gagal query ke database", http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	var daftarPesanan []models.Pesanan
-	for rows.Next() {
-		var p models.Pesanan
-		if err := rows.Scan(&p.IDPesanan, &p.NamaCustomer, &p.Layanan, &p.TotalBiaya, &p.Status, &p.WaktuPesan, &p.WaktuPerkiraanSelesai, &p.WaktuSelesaiReal); err != nil {
-			http.Error(w, "Gagal baca data", http.StatusInternalServerError)
-			return
-		}
-		daftarPesanan = append(daftarPesanan, p)
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(daftarPesanan)
+	w.Header().Set("Deprecation", "@"+strconv.FormatInt(time.Date(2026, time.November, 7, 0, 0, 0, 0, time.UTC).Unix(), 10))
+	w.Header().Set("Link", `</api/pesanan>; rel="successor-version"`)
+	h.list(w, r, true)
 }
-
-// Fungsi buat Cetak Struk (Ngeluarin HTML khusus printer kasir)
-func (h *Handler) CetakStruk(w http.ResponseWriter, r *http.Request) {
-	idPesanan := r.PathValue("id")
-
-	// Cari pesanan di database
-	var p models.Pesanan
-	query := "SELECT id_pesanan, nama_customer, layanan, total_biaya, status, TO_CHAR(waktu_pesan, 'YYYY-MM-DD HH24:MI:SS'), TO_CHAR(waktu_perkiraan_selesai, 'YYYY-MM-DD HH24:MI:SS'), TO_CHAR(waktu_selesai_real, 'YYYY-MM-DD HH24:MI:SS') FROM pesanan WHERE id_pesanan = $1"
-
-	err := h.db.QueryRow(query, idPesanan).Scan(&p.IDPesanan, &p.NamaCustomer, &p.Layanan, &p.TotalBiaya, &p.Status, &p.WaktuPesan, &p.WaktuPerkiraanSelesai, &p.WaktuSelesaiReal)
-
+func (h *Handler) list(w http.ResponseWriter, r *http.Request, legacy bool) {
+	statusKey := "status"
+	if legacy {
+		statusKey = "q"
+	}
+	values, err := query(r, "limit", "offset", statusKey, "customer_id")
 	if err != nil {
-		http.Error(w, "Pesanan tidak ditemukan", http.StatusNotFound)
+		writeError(w, r, err)
 		return
 	}
-
-	// --- CUKUP UBAH BAGIAN TENGAH FUNGSI CetakStruk ---
-	// Poin 10: HTML Escaping (Membersihkan inputan jahat dari hacker)
-	safeID := html.EscapeString(p.IDPesanan)
-	safeNama := html.EscapeString(p.NamaCustomer)
-	safeLayanan := html.EscapeString(p.Layanan)
-	safeStatus := html.EscapeString(p.Status)
-
-	strWaktuSelesai := "-"
-	if p.WaktuSelesaiReal != nil {
-		strWaktuSelesai = html.EscapeString(*p.WaktuSelesaiReal)
+	p, err := page(values)
+	if err != nil {
+		writeError(w, r, err)
+		return
 	}
-	safeWaktuPesan := html.EscapeString(p.WaktuPesan)
-
-	// Bikin desain struk HTML
-	htmlStruk := `
-	<!DOCTYPE html>
-	<html>
-	<head>
-		<title>Struk ` + safeID + `</title>
-		<style>
-			body { font-family: monospace; width: 300px; margin: 0 auto; padding: 10px; color: #000; }
-			.center { text-align: center; }
-			.line { border-bottom: 1px dashed #000; margin: 10px 0; }
-			h2 { margin: 5px 0; }
-			@media print { body { width: 100%; margin: 0; } }
-		</style>
-	</head>
-	<body onload="window.print()">
-		<div class="center">
-			<h2>ULAUNDRY</h2>
-			<p>Perumahan Viola<br>WA: 0812-3456-7890</p>
-		</div>
-		<div class="line"></div>
-		<p>
-			ID Order : ` + safeID + `<br>
-			Nama     : ` + safeNama + `<br>
-			Layanan  : ` + safeLayanan + `<br>
-			Mulai    : ` + safeWaktuPesan + `<br>
-			Selesai  : ` + strWaktuSelesai + `<br>
-		</p>
-		<div class="line"></div>
-		<h3>TOTAL: Rp ` + fmt.Sprintf("%d", p.TotalBiaya) + `</h3>
-		<div class="line"></div>
-		<p class="center">
-			Status: ` + safeStatus + `<br>
-			<i>Terima kasih telah mempercayakan<br>cucian Anda kepada kami!</i>
-		</p>
-	</body>
-	</html>`
-	// ----------------------------------------------------
-
-	// Balikin response-nya sebagai HTML
-	w.Header().Set("Content-Type", "text/html")
-	w.Write([]byte(htmlStruk))
+	status := values.Get(statusKey)
+	if (legacy && status == "") || (status != "" && !dto.Status(status)) {
+		writeError(w, r, &dto.ValidationError{Message: "Filter status tidak valid."})
+		return
+	}
+	customerID := values.Get("customer_id")
+	if customerID != "" && !dto.Identifier(customerID) {
+		writeError(w, r, &dto.ValidationError{Message: "Identitas pelanggan tidak valid."})
+		return
+	}
+	items, err := h.use.Orders.List(r.Context(), middleware.ActorID(r.Context()), repository.OrderFilter{Page: p, Status: domain.OrderStatus(status), CustomerID: customerID})
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	result := make([]dto.OrderResponse, 0, len(items))
+	for _, item := range items {
+		result = append(result, dto.OrderResponse{ID: item.ID, Customer: item.CustomerName, Services: strings.Join(item.ServiceNames, ", "), Total: int64(item.Total), Status: string(item.Status), PaymentStatus: string(item.PaymentStatus), Version: item.Version, CreatedAt: item.CreatedAt, EstimatedReadyAt: item.EstimatedReadyAt})
+	}
+	response.JSON(w, r, http.StatusOK, result)
 }
-
-// Fungsi buat Lihat Pesanan berdasarkan Id
 func (h *Handler) GetPesananById(w http.ResponseWriter, r *http.Request) {
-	idPesanan := r.PathValue("id")
-
-	// Cari pesanan di database
-	var p models.Pesanan
-	query := "SELECT id_pesanan, nama_customer, layanan, total_biaya, status FROM pesanan WHERE id_pesanan = $1"
-	err := h.db.QueryRow(query, idPesanan).Scan(&p.IDPesanan, &p.NamaCustomer, &p.Layanan, &p.TotalBiaya, &p.Status)
-
-	if err != nil {
-		http.Error(w, "Pesanan tidak ditemukan", http.StatusNotFound)
+	id, ok := pathID(w, r)
+	if !ok {
 		return
 	}
+	item, err := h.use.Orders.Get(r.Context(), middleware.ActorID(r.Context()), id)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	response.JSON(w, r, http.StatusOK, orderView(item))
+}
+func (h *Handler) BikinPesananBaru(w http.ResponseWriter, r *http.Request) {
+	var body dto.OrderRequest
+	if !decode(w, r, &body) {
+		return
+	}
+	in := service.OrderInput{CustomerID: body.CustomerID, Discount: domain.Money(body.Discount), DiscountReason: body.DiscountReason, Notes: body.Notes, EstimatedReadyAt: body.EstimatedReadyAt}
+	for _, item := range body.Items {
+		in.Items = append(in.Items, domain.ItemRequest{ServiceID: item.ServiceID, Quantity: domain.Quantity{Pieces: item.Pieces, Grams: item.Grams}})
+	}
+	created, err := h.use.Orders.Create(r.Context(), middleware.ActorID(r.Context()), in)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	w.Header().Set("Location", "/api/pesanan/"+url.PathEscape(created.Order.ID()))
+	response.JSON(w, r, http.StatusCreated, dto.CreatedOrderResponse{Order: orderView(repository.OrderRecord{Order: created.Order, Version: 1}), TrackingToken: created.TrackingToken})
+}
+func (h *Handler) UpdateStatusPesanan(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var body dto.StatusRequest
+	if !decode(w, r, &body) {
+		return
+	}
+	item, err := h.use.Orders.ChangeStatus(r.Context(), middleware.ActorID(r.Context()), id, domain.OrderStatus(body.Status), body.Version)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	response.JSON(w, r, http.StatusOK, orderView(item))
+}
+func (h *Handler) CancelOrder(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var body dto.CancelRequest
+	if !decode(w, r, &body) {
+		return
+	}
+	item, err := h.use.Orders.Cancel(r.Context(), middleware.ActorID(r.Context()), id, body.Version, body.Reason)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	response.JSON(w, r, http.StatusOK, orderView(item))
+}
+func (h *Handler) RecordPayment(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var body dto.PaymentRequest
+	if !decode(w, r, &body) {
+		return
+	}
+	keys := r.Header.Values("Idempotency-Key")
+	if len(keys) != 1 || !dto.Identifier(keys[0]) {
+		writeError(w, r, &dto.ValidationError{Message: "Satu Idempotency-Key dengan format ID yang sah wajib diisi."})
+		return
+	}
+	result, err := h.use.Payments.Record(r.Context(), middleware.ActorID(r.Context()), service.PaymentInput{OrderID: id, IdempotencyKey: keys[0], Amount: domain.Money(body.Amount), Method: domain.PaymentMethod(body.Method)})
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	status := http.StatusCreated
+	if result.Replayed {
+		status = http.StatusOK
+	}
+	response.JSON(w, r, status, dto.PaymentResponse{ID: result.Payment.ID, Amount: int64(result.Payment.Amount), Replayed: result.Replayed})
+}
+func (h *Handler) Tracking(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	token := r.PathValue("token")
+	if !dto.TrackingToken(token) {
+		response.Fail(w, r, 404, "not_found", "Data tidak ditemukan.")
+		return
+	}
+	view, err := h.use.Tracking.Get(r.Context(), token)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	response.JSON(w, r, http.StatusOK, dto.TrackingResponse{Status: string(view.Status), EstimatedReadyAt: view.EstimatedReadyAt, ReadyAt: nullableTime(view.ReadyAt), CollectedAt: nullableTime(view.CollectedAt)})
+}
 
-	var daftarPesanan []models.Pesanan
-	daftarPesanan = append(daftarPesanan, p)
+var receipt = template.Must(template.New("receipt").Parse(`<!DOCTYPE html><html lang="id"><head><title>Struk {{.ID}}</title><style>body{font-family:monospace;width:300px;margin:0 auto;padding:10px;color:#000}.center{text-align:center}.line{border-bottom:1px dashed #000;margin:10px 0}@media print{body{width:100%;margin:0}}</style></head><body><div class="center"><h2>ULAUNDRY</h2><p>Perumahan Viola</p></div><div class="line"></div><p>ID Order: {{.ID}}<br>Nama: {{.Customer}}<br>Layanan: {{.Services}}<br>Mulai: {{.CreatedAt.Format "2006-01-02 15:04:05 -07:00"}}</p><h3>TOTAL: Rp {{.Total}}</h3><p>Status: {{.Status}}<br>Pembayaran: {{.PaymentStatus}}</p><button onclick="window.print()">Cetak struk</button></body></html>`))
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(daftarPesanan)
+func (h *Handler) CetakStruk(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	item, err := h.use.Orders.Get(r.Context(), middleware.ActorID(r.Context()), id)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	var body bytes.Buffer
+	if err := receipt.Execute(&body, orderView(item)); err != nil {
+		writeError(w, r, err)
+		return
+	}
+	response.Prepare(w, r)
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Length", strconv.Itoa(body.Len()))
+	if r.Method != http.MethodHead {
+		_, _ = w.Write(body.Bytes())
+	}
 }

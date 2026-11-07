@@ -1,0 +1,2 @@
+# Checksums must match on Windows and Ubuntu checkouts.
+migrations/*.up.sql text eol=lf

@@ -1,56 +1,68 @@
 package middleware
 
 import (
-	"fmt"
+	"context"
 	"net/http"
 	"strings"
+	"ulaundry/internal/http/response"
 
-	"github.com/golang-jwt/jwt/v5"
+	"errors"
+	"ulaundry/internal/security"
 )
 
+type actorKey struct{}
+
+func ActorID(ctx context.Context) string { value, _ := ctx.Value(actorKey{}).(string); return value }
+
 type Middleware struct {
-	jwtSecret      string
+	sessions       *security.Manager
 	trustedOrigins map[string]bool
 }
 
-func New(jwtSecret string, trustedOrigins []string) *Middleware {
+func New(trustedOrigins []string, sessions *security.Manager) *Middleware {
 	origins := make(map[string]bool, len(trustedOrigins))
 	for _, origin := range trustedOrigins {
 		if origin != "" && origin != "*" {
 			origins[origin] = true
 		}
 	}
-	return &Middleware{jwtSecret: jwtSecret, trustedOrigins: origins}
+	return &Middleware{sessions: sessions, trustedOrigins: origins}
 }
 
 func (m *Middleware) BukaPintuCORS(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Vary", "Origin")
 		origin := r.Header.Get("Origin")
+		if len(r.Header.Values("Origin")) > 1 {
+			response.Fail(w, r, http.StatusForbidden, "origin_forbidden", "Origin tidak diizinkan.")
+			return
+		}
 		if origin != "" {
 			if !m.trustedOrigins[origin] {
-				http.Error(w, "Origin tidak diizinkan", http.StatusForbidden)
+				response.Fail(w, r, http.StatusForbidden, "origin_forbidden", "Origin tidak diizinkan.")
 				return
 			}
 			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID, Deprecation, Link, Location")
 		}
 		if r.Method == "OPTIONS" && r.Header.Get("Access-Control-Request-Method") != "" {
 			w.Header().Add("Vary", "Access-Control-Request-Method")
 			w.Header().Add("Vary", "Access-Control-Request-Headers")
 			method := r.Header.Get("Access-Control-Request-Method")
-			if origin == "" || (method != "GET" && method != "POST" && method != "PUT") {
-				http.Error(w, "Preflight tidak diizinkan", http.StatusForbidden)
+			if origin == "" || (method != "GET" && method != "HEAD" && method != "POST" && method != "PUT") {
+				response.Fail(w, r, http.StatusForbidden, "preflight_forbidden", "Preflight tidak diizinkan.")
 				return
 			}
 			for _, header := range strings.Split(r.Header.Get("Access-Control-Request-Headers"), ",") {
 				name := strings.ToLower(strings.TrimSpace(header))
-				if name != "" && name != "content-type" && name != "authorization" {
-					http.Error(w, "Header preflight tidak diizinkan", http.StatusForbidden)
+				if name != "" && name != "content-type" && name != "authorization" && name != "idempotency-key" && name != "x-csrf-token" {
+					response.Fail(w, r, http.StatusForbidden, "preflight_forbidden", "Header preflight tidak diizinkan.")
 					return
 				}
 			}
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
-			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Idempotency-Key, X-CSRF-Token")
+			response.Prepare(w, r)
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
@@ -59,36 +71,31 @@ func (m *Middleware) BukaPintuCORS(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// POIN 7: Verifikasi Algoritma JWT
+type claimsKey struct{}
+
+func SessionClaims(ctx context.Context) security.Claims {
+	c, _ := ctx.Value(claimsKey{}).(security.Claims)
+	return c
+}
+
+// ValidasiJWT accepts only server-backed cookie sessions. Bearer is retired.
 func (m *Middleware) ValidasiJWT(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		if !strings.HasPrefix(authHeader, "Bearer ") {
-			http.Error(w, "Akses ditolak: Kasir belum login!", http.StatusUnauthorized)
-			return
-		}
-
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-
-		secret := m.jwtSecret
-		if secret == "" {
-			http.Error(w, "Error Server: JWT Secret belum dikonfigurasi", http.StatusInternalServerError)
-			return
-		}
-
-		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-			// VERIFIKASI KEAMANAN: Tolak token kalau algoritmanya bukan HMAC (Mencegah Bypass)
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("metode enkripsi tidak valid: %v", token.Header["alg"])
+		c, err := m.sessions.Authenticate(r)
+		if err != nil {
+			if errors.Is(err, security.ErrUnauthorized) {
+				response.Fail(w, r, 401, "unauthorized", "Sesi tidak valid atau telah berakhir.")
+			} else {
+				response.Fail(w, r, 503, "service_unavailable", "Layanan autentikasi sementara tidak tersedia.")
 			}
-			return []byte(secret), nil
-		})
-
-		if err != nil || !token.Valid {
-			http.Error(w, "Akses ditolak: Token tidak valid/expired!", http.StatusUnauthorized)
 			return
 		}
-
-		next.ServeHTTP(w, r)
+		if r.Method != http.MethodGet && r.Method != http.MethodHead && !m.sessions.VerifyCSRF(r, c) {
+			response.Fail(w, r, 403, "csrf_failed", "Permintaan memerlukan token CSRF dan origin yang sah.")
+			return
+		}
+		ctx := context.WithValue(r.Context(), actorKey{}, c.Subject)
+		ctx = context.WithValue(ctx, claimsKey{}, c)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	}
 }

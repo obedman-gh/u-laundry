@@ -2,14 +2,18 @@ package http
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"testing/fstest"
 	"time"
+	"ulaundry/internal/http/response"
+	"ulaundry/internal/testutil"
 
 	"ulaundry/internal/http/middleware"
 
@@ -53,12 +57,25 @@ func (e *endpointRecorder) UpdateStatusPesanan(w http.ResponseWriter, r *http.Re
 func (e *endpointRecorder) GetNeraca(w http.ResponseWriter, r *http.Request) {
 	e.record("report", w, r)
 }
+func (e *endpointRecorder) CreateCustomer(w http.ResponseWriter, r *http.Request) {
+	e.record("customer", w, r)
+}
+func (e *endpointRecorder) ConfigureService(w http.ResponseWriter, r *http.Request) {
+	e.record("service", w, r)
+}
+func (e *endpointRecorder) CancelOrder(w http.ResponseWriter, r *http.Request) {
+	e.record("cancel", w, r)
+}
+func (e *endpointRecorder) RecordPayment(w http.ResponseWriter, r *http.Request) {
+	e.record("payment", w, r)
+}
+func (e *endpointRecorder) Tracking(w http.ResponseWriter, r *http.Request) {
+	e.record("tracking", w, r)
+}
 
 func TestExistingRoutes(t *testing.T) {
-	const secret = "synthetic-router-test-secret"
-	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"username": "fixture", "exp": time.Now().Add(time.Hour).Unix(),
-	}).SignedString([]byte(secret))
+	const secret = "synthetic-router-test-secret-32bytes"
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, testutil.TestClaims("staff-fixture")).SignedString([]byte(secret))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,18 +84,24 @@ func TestExistingRoutes(t *testing.T) {
 		private                   bool
 	}{
 		{"GET", "/api/health", "health", "", false},
-		{"GET", "/api/pesanan/ORD-123", "detail", "ORD-123", false},
-		{"GET", "/api/pesanan/ORD-123/struk", "receipt", "ORD-123", false},
+		{"GET", "/api/pesanan/ORD-123", "detail", "ORD-123", true},
+		{"GET", "/api/pesanan/ORD-123/struk", "receipt", "ORD-123", true},
 		{"POST", "/api/login", "login", "", false},
 		{"GET", "/api/pesanan", "list", "", true},
 		{"GET", "/api/pesanan/status?q=Selesai", "filter", "", true},
 		{"POST", "/api/pesanan", "create", "", true},
 		{"PUT", "/api/pesanan/ORD-123", "update", "ORD-123", true},
 		{"GET", "/api/laporan/neraca", "report", "", true},
+		{"POST", "/api/customers", "customer", "", true},
+		{"POST", "/api/services", "service", "", true},
+		{"PUT", "/api/services/service-1", "service", "service-1", true},
+		{"POST", "/api/pesanan/ORD-123/cancel", "cancel", "ORD-123", true},
+		{"POST", "/api/pesanan/ORD-123/pembayaran", "payment", "ORD-123", true},
+		{"GET", "/api/tracking/token", "tracking", "", false},
 	} {
 		t.Run(tc.endpoint, func(t *testing.T) {
 			e := &endpointRecorder{}
-			router := NewRouter(e, middleware.New(secret, []string{"https://fixture.invalid"}), http.FS(fstest.MapFS{}))
+			router := NewRouter(e, middleware.New([]string{"https://fixture.invalid"}, testutil.TestSessions(secret)), http.FS(fstest.MapFS{}))
 			req := httptest.NewRequest(tc.method, tc.url, nil)
 			req.Header.Set("Origin", "https://fixture.invalid")
 			if tc.private {
@@ -87,7 +110,13 @@ func TestExistingRoutes(t *testing.T) {
 				if denied.Code != http.StatusUnauthorized || e.name != "" {
 					t.Fatalf("private route reached endpoint without auth: status=%d endpoint=%q", denied.Code, e.name)
 				}
-				req.Header.Set("Authorization", "Bearer "+token)
+				manager := testutil.TestSessions(secret)
+				req.AddCookie(&http.Cookie{Name: manager.CookieName(), Value: token})
+				claims, err := manager.Tokens.Parse(token, time.Now())
+				if err != nil {
+					t.Fatal(err)
+				}
+				req.Header.Set("X-CSRF-Token", manager.CSRF(claims))
 			}
 			rr := httptest.NewRecorder()
 			router.ServeHTTP(rr, req)
@@ -108,7 +137,7 @@ func TestExistingStaticAssets(t *testing.T) {
 		t.Fatal("cannot locate frontend fixtures")
 	}
 	assets := filepath.Join(filepath.Dir(sourceFile), "..", "..", "frontend")
-	router := NewRouter(&endpointRecorder{}, middleware.New("fixture", nil), http.Dir(assets))
+	router := NewRouter(&endpointRecorder{}, middleware.New(nil, testutil.TestSessions("fixture")), http.Dir(assets))
 	for _, tc := range []struct{ url, file string }{{"/", "index.html"}, {"/login.html", "login.html"}} {
 		t.Run(tc.file, func(t *testing.T) {
 			want, err := os.ReadFile(filepath.Join(assets, tc.file))
@@ -136,12 +165,11 @@ func TestExistingMethodHandling(t *testing.T) {
 	for _, method := range []string{"DELETE", "OPTIONS"} {
 		t.Run(method, func(t *testing.T) {
 			e := &endpointRecorder{}
-			router := NewRouter(e, middleware.New("fixture", nil), http.FS(fstest.MapFS{}))
+			router := NewRouter(e, middleware.New(nil, testutil.TestSessions("fixture")), http.FS(fstest.MapFS{}))
 			rr := httptest.NewRecorder()
 			router.ServeHTTP(rr, httptest.NewRequest(method, "/api/pesanan/ORD-123", nil))
-			// The catch-all static route handles unmatched API methods;
-			// these missing file paths preserve the legacy 404 response.
-			if rr.Code != http.StatusNotFound || e.name != "" {
+			// Known API paths return 405 and an explicit method list.
+			if rr.Code != http.StatusMethodNotAllowed || rr.Header().Get("Allow") != "GET, HEAD, PUT" || e.name != "" {
 				t.Fatalf("legacy method handling changed: status=%d endpoint=%q", rr.Code, e.name)
 			}
 		})
@@ -150,7 +178,7 @@ func TestExistingMethodHandling(t *testing.T) {
 
 func TestPreflightRunsBeforeRouterAndAuth(t *testing.T) {
 	e := &endpointRecorder{}
-	router := NewRouter(e, middleware.New("fixture", []string{"https://fixture.invalid"}), http.FS(fstest.MapFS{}))
+	router := NewRouter(e, middleware.New([]string{"https://fixture.invalid"}, testutil.TestSessions("fixture")), http.FS(fstest.MapFS{}))
 	req := httptest.NewRequest("OPTIONS", "/api/pesanan/ORD-123", nil)
 	req.Header.Set("Origin", "https://fixture.invalid")
 	req.Header.Set("Access-Control-Request-Method", "PUT")
@@ -161,3 +189,58 @@ func TestPreflightRunsBeforeRouterAndAuth(t *testing.T) {
 		t.Fatalf("preflight reached auth/SQL or static fallback: %d", rr.Code)
 	}
 }
+
+func TestAPIErrorsDoNotFallThroughToStaticFiles(t *testing.T) {
+	for _, tc := range []struct {
+		method, path, origin string
+		status               int
+		code                 string
+	}{
+		{"GET", "/api/private", "", 404, "not_found"},
+		{"GET", "/api", "", 404, "not_found"},
+		{"DELETE", "/api/pesanan/order-1", "", 405, "method_not_allowed"},
+		{"GET", "/api/login", "", 405, "method_not_allowed"},
+		{"GET", "/api/pesanan", "", 401, "unauthorized"},
+		{"GET", "/api/health", "https://foreign.invalid", 403, "origin_forbidden"},
+	} {
+		t.Run(tc.method+tc.path+tc.origin, func(t *testing.T) {
+			e := &endpointRecorder{}
+			router := NewRouter(e, middleware.New(nil, testutil.TestSessions("fixture")), http.FS(fstest.MapFS{"api/private": {Data: []byte("must-not-be-served")}}))
+			r := httptest.NewRequest(tc.method, tc.path, nil)
+			r.Header.Set("Origin", tc.origin)
+			r.Header.Set("X-Request-ID", "caller-private-value")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, r)
+			var body response.ErrorBody
+			if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+				t.Fatal(err)
+			}
+			if w.Code != tc.status || body.Error.Code != tc.code || body.Error.RequestID == "" || body.Error.RequestID != w.Header().Get("X-Request-ID") || body.Error.RequestID == "caller-private-value" || e.name != "" {
+				t.Fatalf("invalid API error: %d %+v", w.Code, body)
+			}
+			if strings.Contains(w.Body.String(), "must-not-be-served") || w.Header().Get("Cache-Control") != "no-store" {
+				t.Fatal("unsafe fallback/cache")
+			}
+		})
+	}
+}
+func TestHeadAndCorrelation(t *testing.T) {
+	e := &endpointRecorder{}
+	router := NewRouter(e, middleware.New(nil, testutil.TestSessions("fixture")), http.FS(fstest.MapFS{}))
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("HEAD", "/api/health", nil))
+	if w.Code != 204 || e.name != "health" || w.Body.Len() != 0 || w.Header().Get("X-Request-ID") == "" {
+		t.Fatal("HEAD routing changed")
+	}
+	previous := w.Header().Get("X-Request-ID")
+	w = httptest.NewRecorder()
+	router.ServeHTTP(w, httptest.NewRequest("HEAD", "/api/unknown", nil))
+	if w.Code != 404 || w.Body.Len() != 0 || w.Header().Get("Content-Length") == "" || w.Header().Get("X-Request-ID") == previous {
+		t.Fatal("HEAD error/correlation invalid")
+	}
+}
+
+func (e *endpointRecorder) CurrentSession(w http.ResponseWriter, r *http.Request) {
+	e.record("session", w, r)
+}
+func (e *endpointRecorder) Logout(w http.ResponseWriter, r *http.Request) { e.record("logout", w, r) }

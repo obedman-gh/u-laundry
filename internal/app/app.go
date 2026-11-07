@@ -18,7 +18,6 @@ import (
 )
 
 type Database interface {
-	handler.Database
 	io.Closer
 }
 
@@ -29,9 +28,9 @@ type App struct {
 }
 
 // New takes ownership of db. Run or Serve closes it after HTTP has stopped.
-func New(settings config.Config, db Database) *App {
-	h := handler.New(db, settings.JWTSecret)
-	m := middleware.New(settings.JWTSecret, settings.TrustedOrigins)
+func New(settings config.Config, db Database, use handler.Dependencies) *App {
+	h := handler.New(use)
+	m := middleware.New(settings.TrustedOrigins, use.Sessions)
 	return &App{
 		server: &http.Server{
 			Addr:              settings.HTTP.Address,

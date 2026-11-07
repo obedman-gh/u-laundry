@@ -1,6 +1,8 @@
 package main
 
-// Legacy setup utility; do not run against operational data.
+// DEPRECATED: development-only fixed-credential bootstrap, pending the secure
+// owner bootstrap on day 10. Schema creation moved to cmd/migrate on day 04.
+// Do not run against operational data; see docs/database.md.
 
 import (
 	"context"
@@ -35,21 +37,6 @@ func run() (result error) {
 		return err
 	}
 	defer func() { result = errors.Join(result, db.Close()) }()
-
-	// 1. Bikin Tabel Kasir
-	queryTabel := `
-	CREATE TABLE IF NOT EXISTS kasir (
-		id_kasir SERIAL PRIMARY KEY,
-		username VARCHAR(50) UNIQUE NOT NULL,
-		password VARCHAR(255) NOT NULL,
-		nama_lengkap VARCHAR(100) NOT NULL
-	);`
-
-	_, err = db.ExecContext(context.Background(), queryTabel)
-	if err != nil {
-		return err
-	}
-	fmt.Println("Tabel 'kasir' berhasil dibuat!")
 
 	// 2. Bikin Password Rahasia
 	passwordAsli := "admin123"

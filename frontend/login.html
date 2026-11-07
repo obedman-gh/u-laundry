@@ -132,6 +132,9 @@
     </div>
 
     <script>
+        // Hapus token lama; sesi baru hanya berada dalam cookie HttpOnly.
+        try { localStorage.removeItem('token'); } catch (_) {}
+
         // Logika Toggle Password
         const togglePassword = document.getElementById('togglePassword');
         const passwordInput = document.getElementById('password');
@@ -170,6 +173,7 @@
 
             fetch('/api/login', {
                 method: 'POST',
+                credentials: 'same-origin',
                 headers: {
                     'Content-Type': 'application/json'
                 },
@@ -178,11 +182,11 @@
             .then(async response => {
                 const data = await response.json().catch(() => ({}));
                 
-                if (response.ok && data.token) {
-                    localStorage.setItem('token', data.token);
+                if (response.ok && data.csrf_token) {
                     window.location.href = '/index.html';
                 } else {
-                    errorDiv.textContent = data.pesan || data || 'Gagal login. Periksa kembali kredensial Anda.';
+                    const message = data?.error?.message ?? data?.pesan;
+                    errorDiv.textContent = typeof message === 'string' ? message : 'Gagal login. Periksa kembali kredensial Anda.';
                     errorDiv.style.display = 'block';
                     btn.textContent = 'Masuk';
                     btn.disabled = false;

@@ -28,47 +28,74 @@
   </head>
   <body>
     <h2>👕 Daftar Antrean ULaundry</h2>
+    <button id="logout" type="button" disabled>Keluar</button>
     <div id="tempat-pesanan">Lagi ngambil data dari server Go...</div>
 
     <script>
-      // 1. URL dibikin relatif (cuma /api/...) biar ngikutin otomatis lu lagi buka di localhost atau ulaundry
-      // 2. Selipin tiket Bearer (asumsinya lu udah bikin fitur login yang nyimpen token ke localStorage)
-      const token = localStorage.getItem("token");
-
-      fetch("/api/pesanan", {
-        method: "GET",
-        headers: {
-          Authorization: "Bearer " + token,
-          "Content-Type": "application/json",
-        },
-      })
-        .then((res) => {
-          if (res.status === 401) {
-            alert("Woy, login kasir dulu!"); // Tendang ke halaman login kalau belum login
-            window.location.href = "/login.html";
-          }
-          return res.json();
-        })
-        .then((data) => {
-          const wadah = document.getElementById("tempat-pesanan");
-          wadah.innerHTML = ""; // Kosongin teks loading
-
-          // Looping data pesanan
-          data.forEach((pesanan) => {
-            wadah.innerHTML += `
-                        <div class="card">
-                            <strong>${pesanan.nama_customer}</strong> (${pesanan.id_pesanan})<br>
-                            Layanan: ${pesanan.layanan} <br>
-                            Total: Rp ${pesanan.total_biaya.toLocaleString("id-ID")} <br>
-                            Status: <span class="status">${pesanan.status}</span>
-                        </div>
-                    `;
+      try { localStorage.removeItem("token"); } catch (_) {}
+      const container = document.getElementById("tempat-pesanan");
+      const logout = document.getElementById("logout");
+      let csrfToken = "";
+      function loginPage() {
+        csrfToken = "";
+        window.location.href = "/login.html";
+      }
+      async function read(response) {
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 401) {
+          loginPage();
+          throw new Error("Sesi telah berakhir. Silakan masuk kembali.");
+        }
+        if (!response.ok) throw new Error(data?.error?.message || "Permintaan tidak dapat diproses.");
+        return data;
+      }
+      async function loadOrders() {
+        try {
+          const session = await read(await fetch("/api/session", { credentials: "same-origin" }));
+          csrfToken = session.csrf_token;
+          logout.disabled = false;
+          const orders = await read(await fetch("/api/pesanan", { credentials: "same-origin" }));
+          if (!Array.isArray(orders)) throw new Error("Respons daftar pesanan tidak valid.");
+          container.replaceChildren();
+          if (orders.length === 0) container.textContent = "Belum ada pesanan dalam antrean.";
+          orders.forEach(order => {
+            const card = document.createElement("div");
+            card.className = "card";
+            const title = document.createElement("strong");
+            title.textContent = `${order.nama_customer} (${order.id_pesanan})`;
+            card.appendChild(title);
+            const details = [
+              `Layanan: ${order.layanan}`,
+              `Total: Rp ${Number(order.total_biaya).toLocaleString("id-ID")}`,
+              `Status: ${order.status}`
+            ];
+            details.forEach((text, index) => {
+              const line = document.createElement("div");
+              line.textContent = text;
+              if (index === 2) line.className = "status";
+              card.appendChild(line);
+            });
+            container.appendChild(card);
           });
-        })
-        .catch((error) => {
-          document.getElementById("tempat-pesanan").innerHTML =
-            "Gagal ngambil data coy!";
-        });
+        } catch (error) {
+          container.textContent = error.message || "Layanan sementara tidak tersedia.";
+        }
+      }
+      logout.addEventListener("click", async () => {
+        if (!csrfToken) { loginPage(); return; }
+        logout.disabled = true;
+        try {
+          await read(await fetch("/api/logout", {
+            method: "POST", credentials: "same-origin",
+            headers: { "X-CSRF-Token": csrfToken }
+          }));
+          loginPage();
+        } catch (error) {
+          container.textContent = error.message || "Keluar gagal. Silakan coba kembali.";
+          logout.disabled = !csrfToken;
+        }
+      });
+      loadOrders();
     </script>
   </body>
 </html>

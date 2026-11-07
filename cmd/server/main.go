@@ -7,9 +7,14 @@ import (
 	"os/signal"
 	"syscall"
 
+	"net/http"
 	"ulaundry/internal/app"
 	"ulaundry/internal/config"
+	"ulaundry/internal/http/handler"
 	"ulaundry/internal/platform"
+	"ulaundry/internal/repository/postgres"
+	"ulaundry/internal/security"
+	"ulaundry/internal/service"
 )
 
 func main() {
@@ -32,7 +37,20 @@ func run(ctx context.Context) error {
 		return err
 	}
 	logger.Info("Database ULaundry siap; memulai server HTTP", "address", settings.HTTP.Address, "environment", settings.Environment)
-	if err := app.New(settings, db).Run(ctx); err != nil {
+	uow := postgres.New(db)
+	runtime := service.Runtime{Clock: platform.SystemClock{}, IDs: platform.RandomIDs{}, Tokens: platform.RandomTokens{}}
+	use := handler.Dependencies{
+		Customers: service.NewCustomers(uow, runtime), Catalog: service.NewCatalog(uow, runtime), Orders: service.NewOrders(uow, runtime), Payments: service.NewPayments(uow, runtime),
+		Tracking: service.NewTracking(uow), Reports: service.NewReports(uow, runtime), Auth: service.NewAuth(uow, runtime, platform.Passwords{}, platform.JWTIssuer{Secret: settings.JWTSecret, Issuer: settings.JWTIssuer, Audience: settings.JWTAudience, Lifetime: settings.SessionLifetime}), Health: service.NewHealth(db),
+	}
+	sameSite := http.SameSiteLaxMode
+	if settings.Cookie.SameSite == "strict" {
+		sameSite = http.SameSiteStrictMode
+	} else if settings.Cookie.SameSite == "none" {
+		sameSite = http.SameSiteNoneMode
+	}
+	use.Sessions = &security.Manager{Tokens: security.Tokens{Secret: settings.JWTSecret, Issuer: settings.JWTIssuer, Audience: settings.JWTAudience, Lifetime: settings.SessionLifetime}, Store: uow, Secret: settings.Cookie.Secret, Origin: settings.PublicBaseURL, Secure: settings.Cookie.Secure, SameSite: sameSite, Limiter: &security.Limiter{}, PeerLimit: settings.LoginLimit, PeerWindow: settings.LoginWindow}
+	if err := app.New(settings, db, use).Run(ctx); err != nil {
 		return err
 	}
 	logger.Info("Server HTTP dihentikan dan koneksi database ditutup")
