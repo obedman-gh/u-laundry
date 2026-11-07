@@ -3,13 +3,35 @@ package main
 // Legacy demo utility; do not run against operational data.
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log"
-	"ulaundry/config"
+	"os"
+	"ulaundry/internal/config"
+	"ulaundry/internal/platform"
 )
 
 func main() {
-	config.ConnectDB()
+	if err := run(); err != nil {
+		log.Print("Utilitas legacy gagal; periksa konfigurasi dan database")
+		os.Exit(1)
+	}
+}
+
+func run() (result error) {
+	settings, err := config.Load()
+	if err != nil {
+		return err
+	}
+	if settings.Environment == config.Production {
+		return errors.New("utilitas legacy dilarang pada production")
+	}
+	db, err := platform.OpenDatabase(context.Background(), settings.Database)
+	if err != nil {
+		return err
+	}
+	defer func() { result = errors.Join(result, db.Close()) }()
 
 	queryTabel := `
 	CREATE TABLE IF NOT EXISTS keuangan (
@@ -20,13 +42,16 @@ func main() {
 		nominal INT NOT NULL
 	);`
 
-	_, err := config.DB.Exec(queryTabel)
+	_, err = db.ExecContext(context.Background(), queryTabel)
 	if err != nil {
-		log.Fatalf("Gagal bikin tabel keuangan: %v", err)
+		return err
 	}
 
 	// Masukin satu data pengeluaran fiktif buat test neraca
-	config.DB.Exec("INSERT INTO keuangan (tipe, keterangan, nominal) VALUES ('KREDIT', 'Beli Sabun Cuci 5 Liter', 45000)")
+	if _, err := db.ExecContext(context.Background(), "INSERT INTO keuangan (tipe, keterangan, nominal) VALUES ('KREDIT', 'Beli Sabun Cuci 5 Liter', 45000)"); err != nil {
+		return err
+	}
 
 	fmt.Println("Tabel Buku Kas & Neraca siap digunakan!")
+	return nil
 }

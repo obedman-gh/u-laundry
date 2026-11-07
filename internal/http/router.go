@@ -24,15 +24,15 @@ func NewRouter(h Endpoints, m *middleware.Middleware, assets http.FileSystem) ht
 	mux := http.NewServeMux()
 	mux.Handle("/", http.FileServer(assets))
 
-	mux.HandleFunc("GET /api/health", m.BukaPintuCORS(h.HealthCheck))
-	mux.HandleFunc("GET /api/pesanan/{id}", m.BukaPintuCORS(h.GetPesananById))
-	mux.HandleFunc("GET /api/pesanan/{id}/struk", m.BukaPintuCORS(h.CetakStruk))
-	mux.HandleFunc("POST /api/login", m.BukaPintuCORS(h.Login))
+	mux.HandleFunc("GET /api/health", h.HealthCheck)
+	mux.HandleFunc("GET /api/pesanan/{id}", h.GetPesananById)
+	mux.HandleFunc("GET /api/pesanan/{id}/struk", h.CetakStruk)
+	mux.HandleFunc("POST /api/login", h.Login)
 
-	mux.HandleFunc("GET /api/pesanan", m.BukaPintuCORS(m.ValidasiJWT(h.GetSemuaPesanan)))
-	mux.HandleFunc("GET /api/pesanan/status", m.BukaPintuCORS(m.ValidasiJWT(h.GetPesananByStatus)))
-	mux.HandleFunc("POST /api/pesanan", m.BukaPintuCORS(m.ValidasiJWT(h.BikinPesananBaru)))
-	mux.HandleFunc("PUT /api/pesanan/{id}", m.BukaPintuCORS(m.ValidasiJWT(h.UpdateStatusPesanan)))
-	mux.HandleFunc("GET /api/laporan/neraca", m.BukaPintuCORS(m.ValidasiJWT(h.GetNeraca)))
-	return mux
+	mux.HandleFunc("GET /api/pesanan", m.ValidasiJWT(h.GetSemuaPesanan))
+	mux.HandleFunc("GET /api/pesanan/status", m.ValidasiJWT(h.GetPesananByStatus))
+	mux.HandleFunc("POST /api/pesanan", m.ValidasiJWT(h.BikinPesananBaru))
+	mux.HandleFunc("PUT /api/pesanan/{id}", m.ValidasiJWT(h.UpdateStatusPesanan))
+	mux.HandleFunc("GET /api/laporan/neraca", m.ValidasiJWT(h.GetNeraca))
+	return m.BukaPintuCORS(mux.ServeHTTP)
 }

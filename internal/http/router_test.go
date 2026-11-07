@@ -78,8 +78,9 @@ func TestExistingRoutes(t *testing.T) {
 	} {
 		t.Run(tc.endpoint, func(t *testing.T) {
 			e := &endpointRecorder{}
-			router := NewRouter(e, middleware.New(secret, "https://fixture.invalid"), http.FS(fstest.MapFS{}))
+			router := NewRouter(e, middleware.New(secret, []string{"https://fixture.invalid"}), http.FS(fstest.MapFS{}))
 			req := httptest.NewRequest(tc.method, tc.url, nil)
+			req.Header.Set("Origin", "https://fixture.invalid")
 			if tc.private {
 				denied := httptest.NewRecorder()
 				router.ServeHTTP(denied, req)
@@ -107,7 +108,7 @@ func TestExistingStaticAssets(t *testing.T) {
 		t.Fatal("cannot locate frontend fixtures")
 	}
 	assets := filepath.Join(filepath.Dir(sourceFile), "..", "..", "frontend")
-	router := NewRouter(&endpointRecorder{}, middleware.New("fixture", ""), http.Dir(assets))
+	router := NewRouter(&endpointRecorder{}, middleware.New("fixture", nil), http.Dir(assets))
 	for _, tc := range []struct{ url, file string }{{"/", "index.html"}, {"/login.html", "login.html"}} {
 		t.Run(tc.file, func(t *testing.T) {
 			want, err := os.ReadFile(filepath.Join(assets, tc.file))
@@ -135,7 +136,7 @@ func TestExistingMethodHandling(t *testing.T) {
 	for _, method := range []string{"DELETE", "OPTIONS"} {
 		t.Run(method, func(t *testing.T) {
 			e := &endpointRecorder{}
-			router := NewRouter(e, middleware.New("fixture", ""), http.FS(fstest.MapFS{}))
+			router := NewRouter(e, middleware.New("fixture", nil), http.FS(fstest.MapFS{}))
 			rr := httptest.NewRecorder()
 			router.ServeHTTP(rr, httptest.NewRequest(method, "/api/pesanan/ORD-123", nil))
 			// The catch-all static route handles unmatched API methods;
@@ -144,5 +145,19 @@ func TestExistingMethodHandling(t *testing.T) {
 				t.Fatalf("legacy method handling changed: status=%d endpoint=%q", rr.Code, e.name)
 			}
 		})
+	}
+}
+
+func TestPreflightRunsBeforeRouterAndAuth(t *testing.T) {
+	e := &endpointRecorder{}
+	router := NewRouter(e, middleware.New("fixture", []string{"https://fixture.invalid"}), http.FS(fstest.MapFS{}))
+	req := httptest.NewRequest("OPTIONS", "/api/pesanan/ORD-123", nil)
+	req.Header.Set("Origin", "https://fixture.invalid")
+	req.Header.Set("Access-Control-Request-Method", "PUT")
+	req.Header.Set("Access-Control-Request-Headers", "Authorization, Content-Type")
+	rr := httptest.NewRecorder()
+	router.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNoContent || e.name != "" {
+		t.Fatalf("preflight reached auth/SQL or static fallback: %d", rr.Code)
 	}
 }

@@ -3,17 +3,38 @@ package main
 // Legacy setup utility; do not run against operational data.
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log"
+	"os"
 
-	"ulaundry/config" // sesuaikan dengan nama module lu
+	"ulaundry/internal/config"
+	"ulaundry/internal/platform"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
 func main() {
-	// Koneksi ke DB
-	config.ConnectDB()
+	if err := run(); err != nil {
+		log.Print("Utilitas legacy gagal; periksa konfigurasi dan database")
+		os.Exit(1)
+	}
+}
+
+func run() (result error) {
+	settings, err := config.Load()
+	if err != nil {
+		return err
+	}
+	if settings.Environment == config.Production {
+		return errors.New("utilitas legacy dilarang pada production")
+	}
+	db, err := platform.OpenDatabase(context.Background(), settings.Database)
+	if err != nil {
+		return err
+	}
+	defer func() { result = errors.Join(result, db.Close()) }()
 
 	// 1. Bikin Tabel Kasir
 	queryTabel := `
@@ -24,9 +45,9 @@ func main() {
 		nama_lengkap VARCHAR(100) NOT NULL
 	);`
 
-	_, err := config.DB.Exec(queryTabel)
+	_, err = db.ExecContext(context.Background(), queryTabel)
 	if err != nil {
-		log.Fatalf("Gagal bikin tabel kasir: %v", err)
+		return err
 	}
 	fmt.Println("Tabel 'kasir' berhasil dibuat!")
 
@@ -35,7 +56,7 @@ func main() {
 	// Enkripsi password pake Bcrypt (Biar hacker gak bisa baca DB lu)
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(passwordAsli), bcrypt.DefaultCost)
 	if err != nil {
-		log.Fatalf("Gagal enkripsi password: %v", err)
+		return err
 	}
 
 	// 3. Masukin Akun Kasir ke Database
@@ -44,12 +65,12 @@ func main() {
 	VALUES ($1, $2, $3) 
 	ON CONFLICT (username) DO NOTHING;`
 
-	_, err = config.DB.Exec(queryInsert, "obed", string(hashedPassword), "Obed Erwin")
+	_, err = db.ExecContext(context.Background(), queryInsert, "obed", string(hashedPassword), "Obed Erwin")
 	if err != nil {
-		log.Fatalf("Gagal insert akun kasir: %v", err)
+		return err
 	}
 
 	fmt.Println("Akun kasir berhasil dibuat!")
 	fmt.Println("Username: obed")
-	fmt.Println("Password:", passwordAsli)
+	return nil
 }

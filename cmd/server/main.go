@@ -2,8 +2,7 @@ package main
 
 import (
 	"context"
-	"errors"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -17,7 +16,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := run(ctx); err != nil {
-		log.Print(err)
+		slog.Error("Server ULaundry gagal", "error", err)
 		os.Exit(1)
 	}
 }
@@ -25,17 +24,17 @@ func main() {
 func run(ctx context.Context) error {
 	settings, err := config.Load()
 	if err != nil {
-		log.Print("File .env tidak dapat dimuat; menggunakan environment sistem")
+		return err
 	}
-	db, err := platform.OpenDatabase(settings.Database)
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: settings.LogLevel}))
+	db, err := platform.OpenDatabase(ctx, settings.Database)
 	if err != nil {
-		// Driver errors can contain deployment details; do not log the DSN.
-		return errors.New("database tidak tersedia; periksa konfigurasi dan koneksi PostgreSQL")
+		return err
 	}
-	log.Print("Database ULaundry siap; memulai server HTTP pada ", settings.HTTP.Address)
+	logger.Info("Database ULaundry siap; memulai server HTTP", "address", settings.HTTP.Address, "environment", settings.Environment)
 	if err := app.New(settings, db).Run(ctx); err != nil {
 		return err
 	}
-	log.Print("Server HTTP dihentikan dan koneksi database ditutup")
+	logger.Info("Server HTTP dihentikan dan koneksi database ditutup")
 	return nil
 }

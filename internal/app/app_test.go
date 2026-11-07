@@ -45,9 +45,11 @@ func TestNewWiresDatabaseAndHTTP(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			db := &lifecycleDB{pingErr: tc.err}
-			a := New(config.Config{AllowedOrigin: "https://fixture.invalid"}, db)
+			a := New(config.Config{TrustedOrigins: []string{"https://fixture.invalid"}}, db)
 			rr := httptest.NewRecorder()
-			a.server.Handler.ServeHTTP(rr, httptest.NewRequest("GET", "/api/health", nil))
+			req := httptest.NewRequest("GET", "/api/health", nil)
+			req.Header.Set("Origin", "https://fixture.invalid")
+			a.server.Handler.ServeHTTP(rr, req)
 			if rr.Code != tc.want || db.pingCount.Load() != 1 || rr.Header().Get("Access-Control-Allow-Origin") != "https://fixture.invalid" {
 				t.Fatalf("application dependencies not wired: status=%d pings=%d", rr.Code, db.pingCount.Load())
 			}

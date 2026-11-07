@@ -31,14 +31,15 @@ type App struct {
 // New takes ownership of db. Run or Serve closes it after HTTP has stopped.
 func New(settings config.Config, db Database) *App {
 	h := handler.New(db, settings.JWTSecret)
-	m := middleware.New(settings.JWTSecret, settings.AllowedOrigin)
+	m := middleware.New(settings.JWTSecret, settings.TrustedOrigins)
 	return &App{
 		server: &http.Server{
-			Addr:         settings.HTTP.Address,
-			Handler:      apphttp.NewRouter(h, m, http.Dir(settings.HTTP.StaticDir)),
-			ReadTimeout:  settings.HTTP.ReadTimeout,
-			WriteTimeout: settings.HTTP.WriteTimeout,
-			IdleTimeout:  settings.HTTP.IdleTimeout,
+			Addr:              settings.HTTP.Address,
+			Handler:           apphttp.NewRouter(h, m, http.Dir(settings.HTTP.StaticDir)),
+			ReadTimeout:       settings.HTTP.ReadTimeout,
+			ReadHeaderTimeout: settings.HTTP.ReadHeaderTimeout,
+			WriteTimeout:      settings.HTTP.WriteTimeout,
+			IdleTimeout:       settings.HTTP.IdleTimeout,
 		},
 		db: db, shutdownTimeout: settings.HTTP.ShutdownTimeout,
 	}

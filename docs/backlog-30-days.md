@@ -1,6 +1,6 @@
 # Backlog 30 Hari ULaundry
 
-Baseline 7 November 2026, commit `94ffc77`. Acuan urutan/scope: `F:\project\ulaundry\PROMPTS_30_HARI_ULaundry_PRODUCTION.md`; instruksi kerja: `../AGENTS.md` dari root repository. Hari adalah urutan pekerjaan, bukan janji selesai pada tanggal kalender. Hari 01 selesai untuk dokumen; fondasi hari 02 sudah diimplementasikan, dengan bukti pada `docs/progress/day-02.md`; hari 03–30 **belum dikerjakan**. H09 (build package) terselesaikan; M05 dipersempit dengan test sintetis tanpa init/DB nyata, namun PostgreSQL integration/security/ledger tests masih backlog. Temuan lain tetap terbuka selain koreksi dokumentasi L01.
+Baseline 7 November 2026, commit `94ffc77`. Acuan urutan/scope: `F:\project\ulaundry\PROMPTS_30_HARI_ULaundry_PRODUCTION.md`; instruksi kerja: `../AGENTS.md` dari root repository. Hari adalah urutan pekerjaan, bukan janji selesai pada tanggal kalender. Hari 01–03 sudah diimplementasikan, dengan bukti pada `docs/progress/day-01.md` sampai `day-03.md`; hari 04–30 **belum dikerjakan**. H09 (build), H04 (startup config) dan H11 (CORS/preflight) tertangani pada lingkup implementasi/unit/HTTP yang tercatat; konfigurasi production aktual belum diverifikasi. M02/M05 dipersempit dengan lifecycle/pool/deadline/test sintetis, tetapi query request-context, PostgreSQL integration, security/session dan ledger tests masih backlog. Temuan lain tetap terbuka selain koreksi dokumentasi L01.
 
 ## Aturan pelaksanaan
 

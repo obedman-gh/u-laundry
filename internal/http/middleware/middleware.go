@@ -9,26 +9,49 @@ import (
 )
 
 type Middleware struct {
-	jwtSecret     string
-	allowedOrigin string
+	jwtSecret      string
+	trustedOrigins map[string]bool
 }
 
-func New(jwtSecret, allowedOrigin string) *Middleware {
-	if allowedOrigin == "" {
-		allowedOrigin = "*" // Legacy default; production policy is tightened separately.
+func New(jwtSecret string, trustedOrigins []string) *Middleware {
+	origins := make(map[string]bool, len(trustedOrigins))
+	for _, origin := range trustedOrigins {
+		if origin != "" && origin != "*" {
+			origins[origin] = true
+		}
 	}
-	return &Middleware{jwtSecret: jwtSecret, allowedOrigin: allowedOrigin}
+	return &Middleware{jwtSecret: jwtSecret, trustedOrigins: origins}
 }
 
 func (m *Middleware) BukaPintuCORS(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", m.allowedOrigin)
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-
-		// Handle preflight request dari browser
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
+		w.Header().Add("Vary", "Origin")
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			if !m.trustedOrigins[origin] {
+				http.Error(w, "Origin tidak diizinkan", http.StatusForbidden)
+				return
+			}
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+		}
+		if r.Method == "OPTIONS" && r.Header.Get("Access-Control-Request-Method") != "" {
+			w.Header().Add("Vary", "Access-Control-Request-Method")
+			w.Header().Add("Vary", "Access-Control-Request-Headers")
+			method := r.Header.Get("Access-Control-Request-Method")
+			if origin == "" || (method != "GET" && method != "POST" && method != "PUT") {
+				http.Error(w, "Preflight tidak diizinkan", http.StatusForbidden)
+				return
+			}
+			for _, header := range strings.Split(r.Header.Get("Access-Control-Request-Headers"), ",") {
+				name := strings.ToLower(strings.TrimSpace(header))
+				if name != "" && name != "content-type" && name != "authorization" {
+					http.Error(w, "Header preflight tidak diizinkan", http.StatusForbidden)
+					return
+				}
+			}
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 

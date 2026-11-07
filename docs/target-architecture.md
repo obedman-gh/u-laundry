@@ -1,25 +1,30 @@
 # Arsitektur Target Bertahap ULaundry
 
-Acuan: audit hari 01 pada commit `94ffc77`, diperbarui hari 02. Bagian target tetap rencana; status yang sudah diimplementasikan dipisahkan di bawah. Tetap Go/PostgreSQL, net/http, frontend sederhana dan palet ULaundry; tanpa framework DI atau frontend besar.
+Acuan: audit hari 01 pada commit `94ffc77`, diperbarui hari 03 dari snapshot hari 02 `e7aa6c7`. Bagian target tetap rencana; status yang sudah diimplementasikan dipisahkan di bawah. Tetap Go/PostgreSQL, net/http, frontend sederhana dan palet ULaundry; tanpa framework DI atau frontend besar.
 
-## Struktur yang sudah tersedia — Hari 02
+## Struktur yang sudah tersedia — Hari 03
 
 ```text
 cmd/server/main.go                   load config, connect DB, signal context
 internal/app/app.go                  compose dependencies, listen/serve/shutdown/close
-internal/config/config.go            snapshot environment dan default lama
-internal/platform/database.go        sql.Open + Ping dengan kebijakan koneksi lama
+internal/config/                    snapshot bertipe + validasi murni + DSN URL parser
+internal/platform/database.go        pq.Config eksplisit + pool + PingContext/deadline
 internal/http/router.go              sembilan route API dan static FileServer
 internal/http/handler/               struct Handler dengan DB/secret injection
 internal/http/middleware/            struct Middleware dengan secret/origin injection
 cmd/legacy/{setup-kasir,setup-keuangan,upgrade-pesanan}/main.go
-config/database.go                  adapter DB global khusus utilitas legacy
 models/, frontend/, migrations/      tetap seperti baseline
 ```
 
 `cmd/server` adalah satu bootstrap aktif, tanpa shim `cmd/main.go`. Router menerima kontrak Endpoints dan filesystem; handler menerima interface Database dengan operasi SQL lama, bukan repository domain. Middleware menerima snapshot secret/origin, tanpa membaca environment per request. App memiliki DB dan menutupnya setelah HTTP berhenti; listener failure, serve failure, grace timeout dan DB-close error dikembalikan ke executable. Setelah grace timeout, koneksi HTTP ditutup paksa; query SQL lama belum context-aware dan tidak dijamin berhenti saat klien putus.
 
-Perilaku bisnis, SQL, status, nominal, response, URL/metode/auth boundary dan file frontend dipertahankan. Timeout/port/cwd/default origin lama juga dipertahankan. Ini belum menutup risiko privacy, JWT, wildcard CORS/preflight, create order/schema atau ledger dari audit. Snapshot konfigurasi belum tervalidasi lengkap; restart diperlukan saat environment berubah.
+Perilaku bisnis, SQL handler, status, nominal, URL/auth boundary dan file frontend dipertahankan. Hari 03 mengubah kebijakan konfigurasi/CORS secara sengaja: bind default loopback, config fail-fast sebelum membuka DB/listener, allowlist origin tanpa wildcard dan preflight global sebelum router/auth. Preflight valid kini 204, origin asing 403; bare OPTIONS tanpa header preflight tetap mengikuti router. Ini tidak menyelesaikan privacy/detail publik, algoritma/claims JWT, create order/schema atau ledger. Restart diperlukan saat environment berubah.
+
+Konfigurasi mode, server/read-header/read/write/idle/shutdown, database URL atau komponen, SSL/CA, pool/lifetime/connect/ping timeout, JWT/cookie secret, cookie flags, trusted origins, public URL dan log level divalidasi satu kali pada `config.Load`. `config.Parse` menerima getter sehingga unit test tidak bergantung environment/cwd/file lokal. Production memakai HTTPS, secret non-placeholder berbeda minimal 32 byte, cookie Secure, password DB minimal 16 byte dan verify-full + CA eksplisit; lihat README/.env.example untuk default dan kebijakan lengkap. Cookie config disiapkan, bukan implementasi session cookie.
+
+`platform.OpenDatabase(ctx, settings)` menggunakan `pq.NewConnectorConfig` dengan struktur eksplisit, termasuk TLS minimum 1.2, UTF8 dan timeout koneksi. Tidak ada konstruksi DSN string atau pembacaan override PG*/passfile/service. Pool dikonfigurasi sebelum PingContext; failure/cancellation menutup pool dan mengembalikan error teredaksi dengan cause untuk errors.Is/As. DB ditutup app setelah shutdown. Handler lama masih memakai query/Ping tanpa request context; itu tetap pekerjaan repository/readiness berikutnya.
+
+Adapter `config/database.go` sudah dihapus; tiga utilitas memakai dependency DB lokal dan dilarang berjalan pada mode production. Utility setup kasir masih memiliki kredensial tetap dalam kode (tidak lagi mencetak password), dan contoh kas/DDL informal tetap menunggu pengganti hari 04/10. Jangan menjalankannya pada data operasional.
 
 Test handler lama diganti connector database/sql sintetis: tanpa init, perubahan cwd, `.env`, network DB atau log data pelanggan. Router diuji lewat fake endpoints dan file HTML asli; lifecycle memakai listener loopback/DB fake untuk membuktikan drain/close/error propagation. Tidak menjalankan utilitas atau PostgreSQL integration.
 
@@ -30,10 +35,10 @@ Test handler lama diganti connector database/sql sintetis: tanpa init, perubahan
 | `go run ./cmd/main.go` | `go run ./cmd/server` | File lama sudah dihapus; tidak ada bootstrap paralel |
 | Tiga file utilitas di `cmd/` | Direktori executable terpisah di `cmd/legacy/` | Tetap tidak aman untuk data nyata; DDL/demo diganti migration hari 04, bootstrap akun hari 10 |
 | Fungsi package `handlers` | Method `Handler` di `internal/http/handler` dan `Middleware` internal | Package lama sudah dipindah; kompatibilitas yang dijaga adalah HTTP, bukan API Go internal |
-| `config/database.go` | Server langsung memakai config/platform internal | **Hapus adapter ini hari 03 setelah ketiga utilitas menerima dependency/config baru**; jangan hapus sebelum import legacy dialihkan |
+| `config/database.go` | Server dan tiga utilitas memakai config/platform internal | **Sudah dihapus hari 03**; tidak ada import package lama/DB global tersisa |
 | SQL dan DTO di handler/model | Sementara tetap, memakai Database interface | Domain/repository/service/DTO dipisah hari 05–08, bukan sekaligus pada wiring |
 
-Hari 03 memperluas config tervalidasi, SSL/pool/deadline dan lifecycle DB tanpa global. Hari 04 baru mengganti DDL informal dengan migration berversi; jangan menghapus legacy command sebelum pengganti berfungsi atau ditandai tidak boleh dipakai.
+Hari 03 menyelesaikan config/SSL/pool/deadline initialization tanpa global; actual TLS/PostgreSQL belum diverifikasi. Hari 04 mengganti DDL informal dengan migration berversi; jangan menghapus legacy command sebelum pengganti berfungsi atau ditandai tidak boleh dipakai.
 
 ## Batas tanggung jawab
 
@@ -77,7 +82,7 @@ Critical/High terbuka tetap menghalangi rilis sepanjang tahap awal. Urutan haria
 
 ## Peta perpindahan file baseline ke target
 
-Jalur relatif terhadap root `dev`; kolom pertama mengacu snapshot hari 01, bukan daftar file aktif hari 02. Status perpindahan yang sudah selesai dijelaskan di atas. Pemecahan berdasarkan tanggung jawab, bukan sekadar memindah nama file.
+Jalur relatif terhadap root `dev`; kolom pertama mengacu snapshot hari 01, bukan daftar file aktif hari 03. Status perpindahan yang sudah selesai dijelaskan di atas. Pemecahan berdasarkan tanggung jawab, bukan sekadar memindah nama file.
 
 | File sekarang | Tujuan | Hari / catatan |
 |---|---|---|
@@ -116,4 +121,4 @@ Fitur baru customer, service catalog, payment, shift dan audit masuk boundary sa
 
 ## Bukti perpindahan
 
-Hari 01 hanya dokumen dan dua build. Hari 02 memakai formatting, build package dan targeted tests router/handler/middleware/lifecycle; tidak memverifikasi query pada PostgreSQL. Hari berikut memakai unit domain, HTTP fake, DB terisolasi untuk SQL/schema/transaksi, negative auth tests, browser/manual CSS/JS, serta release checks pada gate 29–30. Command authoritative ada di README; hasil nyata dicatat di laporan harian, bukan ditafsirkan sebagai seluruh arsitektur target selesai.
+Hari 01 hanya dokumen dan dua build. Hari 02 memakai formatting, build package dan targeted tests router/handler/middleware/lifecycle. Hari 03 menambah positive/negative config tests, DSN/redaction, synthetic SQL connector untuk pool/deadline/cleanup, serta HTTP CORS/preflight dan lifecycle yang terdampak. Tidak mengakses PostgreSQL atau menguji sertifikat infrastruktur nyata. Hari berikut memakai unit domain, HTTP fake, DB terisolasi untuk SQL/schema/transaksi, negative auth tests, browser/manual CSS/JS, serta release checks pada gate 29–30. Command authoritative ada di README; hasil nyata dicatat di laporan harian.

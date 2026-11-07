@@ -78,6 +78,10 @@ Prioritas: **Critical** = risiko langsung integritas uang atau pengambilalihan s
 | `27b0c02`, `f05f572` — 6 Nov 2026 | Env/README; README baseline tidak selesai. |
 | `2a66803` — 4 Nov 2026 | Rilis perdana; label rilis tidak membuktikan kesiapan operasi. |
 
+## Status tindak lanjut — Hari 03
+
+Baseline di atas tetap merujuk snapshot hari 01. H09 ditutup oleh build hari 02; H04 memperoleh config fail-fast dan positive/negative tests hari 03; H11 memperoleh allowlist tanpa wildcard dan preflight sebelum router (valid 204, origin asing 403) dengan HTTP tests hari 03. M02 kini memiliki pool/lifetime, startup PingContext/connect timeout, DB close dan config SSL; query/Ping handler lama masih belum context-aware. M05 sudah diganti fixture deterministik tanpa init/.env/DB nyata. Adapter DB global sudah dihapus dari seluruh executable. H03 dipersempit: utility lama ditolak pada production dan tidak mencetak password, tetapi kredensial tetap masih ada untuk development sehingga bootstrap aman tetap backlog. Bukti TLS/DB production, session/auth policy lain, data/uang dan UI tetap belum lengkap; jangan menyimpulkan seluruh temuan tertutup.
+
 ## Verifikasi dan keputusan hari 01
 
 - Membaca seluruh sumber terlacak, env contoh, README, schema/test, status/lima commit dan instruksi/prompt lokal.
