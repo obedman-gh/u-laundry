@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"ulaundry/internal/security"
 )
 
 type requestKey struct{}
@@ -25,7 +26,8 @@ func RequestID(ctx context.Context) string {
 }
 func NewRequest(r *http.Request) *http.Request {
 	// Mint our own ID: caller headers cannot inject tokens or PII into correlation.
-	return r.WithContext(context.WithValue(r.Context(), requestKey{}, rand.Text()))
+	id := rand.Text()
+	return r.WithContext(security.WithCorrelationID(context.WithValue(r.Context(), requestKey{}, id), id))
 }
 func Prepare(w http.ResponseWriter, r *http.Request) string {
 	id := RequestID(r.Context())

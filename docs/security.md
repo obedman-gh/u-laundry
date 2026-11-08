@@ -1,6 +1,6 @@
-# Keamanan autentikasi ULaundry — hari 09
+# Keamanan autentikasi dan authorization ULaundry — hari 10
 
-Diperbarui 8 November 2026, Asia/Makassar. Berlaku untuk server domain Go/PostgreSQL saat ini; belum merupakan penerimaan keamanan produksi menyeluruh. Tidak ada akun, password, sesi operasional, .env atau deployment pengguna yang diubah dalam pekerjaan ini.
+Diperbarui 9 November 2026, Asia/Makassar. Berlaku untuk server domain Go/PostgreSQL saat ini; belum merupakan penerimaan keamanan produksi menyeluruh. Tidak ada akun, password, sesi operasional, .env atau deployment pengguna yang diubah dalam pekerjaan ini.
 
 ## Audit dan keputusan penyimpanan
 
@@ -8,7 +8,7 @@ Sebelumnya: login generik dan startup secret validation tersedia, tetapi JWT 24 
 
 Keputusan: aplikasi satu origin memakai JWT hanya dalam cookie HttpOnly, dengan registrasi sesi persisten PostgreSQL. Cookie tidak dibaca JavaScript dan JWT tidak dikembalikan sebagai JSON. localStorage token lama dihapus saat membuka login/daftar. UI memakai GET /api/session untuk identitas, expiry dan token CSRF yang disimpan hanya dalam memori halaman. Tidak memakai refresh token, silent refresh, antrean offline atau fallback Bearer. Pilihan mengikuti [panduan sesi OWASP](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html); HttpOnly membatasi pembacaan cookie, sedangkan XSS tetap dapat menjalankan request sebagai pengguna dan memerlukan pertahanan terpisah.
 
-Peralihan ini memerlukan satu login ulang setelah pemasangan. Token localStorage lama tidak diterima, termasuk jika dipindahkan ke cookie; token tanpa claims/registrasi sesi baru ditolak. Data/role/password staf tidak direset. Akun domain/legacy masih memerlukan bootstrap/import aman pada hari 10 atau prosedur cutover terpisah.
+Peralihan ini memerlukan satu login ulang setelah pemasangan. Token localStorage lama tidak diterima, termasuk jika dipindahkan ke cookie; token tanpa claims/registrasi sesi baru ditolak. Data/role/password staf tidak direset. Bootstrap owner domain dan manajemen staf kini tersedia pada hari 10; akun/data legacy tetap memerlukan import/cutover terpisah.
 
 ## Token, konfigurasi dan sesi
 
@@ -33,7 +33,7 @@ SameSite merupakan lapisan tambahan, bukan pengganti token CSRF; lihat [panduan 
 
 Username tidak ada, password salah dan staf nonaktif menggunakan kegagalan autentikasi generik. Username tak dikenal menjalankan dummy bcrypt; staf nonaktif juga tetap diperiksa password sebelum penolakan. Ini mitigasi timing dasar, bukan klaim seluruh waktu jaringan/DB/variasi cost hash lama konstan. Error internal tidak membocorkan pesan driver, hash, password atau JWT. Request malformed tetap memakai error boundary 400/413/415 sebelum verifikasi credential.
 
-Password akun baru/reset melewati domain.ValidateNewPassword dan platform.Passwords.Hash: minimal 12 karakter Unicode, maksimal 72 byte bcrypt, tanpa control/format character atau spasi tepi; pola berulang dan daftar kecil password umum ditolak. Frasa sandi diperbolehkan tanpa kewajiban komposisi karakter. Hash memakai bcrypt DefaultCost (10). Policy bukan daftar seluruh password bocor, dan tidak mengubah akun existing atau mewajibkan password login lama memenuhi panjang baru. API/bootstrap staf belum dibuat; implementasi hari 10 wajib memakai entry point hash ini.
+Password akun baru/reset melewati domain.ValidateNewPassword dan platform.Passwords.Hash: minimal 12 karakter Unicode, maksimal 72 byte bcrypt, tanpa control/format character atau spasi tepi; pola berulang dan daftar kecil password umum ditolak. Frasa sandi diperbolehkan tanpa kewajiban komposisi karakter. Hash memakai bcrypt DefaultCost (10). Policy bukan daftar seluruh password bocor, dan tidak mengubah akun existing atau mewajibkan password login lama memenuhi panjang baru. API staf dan bootstrap hari 10 memakai entry point hash ini; tidak mengubah password existing otomatis.
 
 Limiter concurrency-safe menghitung semua percobaan credential, termasuk sukses, sebelum bcrypt: default peer TCP 10/1m (LOGIN_RATE_LIMIT/LOGIN_RATE_WINDOW), identifier akun case-folded 10/15m, global proses 100/1m. Respons 429 membawa Retry-After generik. Username/IP hanya menjadi key HMAC di memori, tidak ditulis ke audit/log. Header X-Forwarded-For tidak dipercaya. Bucket maksimal 4096, kadaluwarsa dibersihkan dan bucket aktif tidak dieviction untuk membuka limit. Event login_limited dibatasi pada transisi pertama ke kondisi terblokir, bukan satu tulisan DB setiap request terblokir.
 
@@ -77,3 +77,11 @@ go test ./internal/http -run '^TestPostgresCookieAuthenticationLifecycle$' -coun
 ```
 
 Bukti: PostgreSQL 16 test terisolasi + httptest HTTPS memverifikasi upgrade 4→5/idempotensi, row legacy tetap, generic failure dan audit, cookie flags/session, CSRF/logout/replay/restart, pencabutan role/active/password dan race snapshot credential lama, audit-failure rollback/no cookie, append-only audit dan ketiadaan credential pada event. Lima test JavaScript memeriksa cookie fetch, penghapusan token lama, pesan login, pemuatan kasir/teks aman dan logout-CSRF. Bukan bukti browser Android/secure context nyata, DB TLS produksi, multi-instance limiter, keseluruhan review XSS/CSP, atau kesiapan produksi. Tidak menjalankan full suite, race detector atau deployment.
+
+## Authorization dan akun hari 10
+
+Owner saja dapat mengelola staf; admin/cashier tidak dapat menaikkan role melalui API/claim/header. Matrix lengkap ada di [api.md](api.md#permission-matrix-hari-10). Perubahan staf memegang transaction advisory lock, memuat actor ulang, memeriksa version, menjaga owner aktif dan mencatat audit atomik dengan update/credential revocation. Bootstrap hanya command untuk tabel staff kosong, memakai input terminal tanpa echo atau pipe privat; tidak ada bootstrap HTTP, password bawaan atau recovery tersembunyi.
+
+auth_events kini juga mempunyai kind access_denied dan kolom permission terkontrol. Dengan decorator WithAccessAudit pada composition root, denial direkam sesudah transaksi/view ditolak selesai; audit tetap ada meskipun perubahan bisnis rollback. Password/hash/token dan payload penolakan tidak disalin. Bila recorder gagal, kegagalan dipropagasikan. Mutation audit staff_created/staff_activated/staff_deactivated/staff_role_changed/staff_password_reset dan staff_bootstrapped tetap di audit_events append-only, tanpa password lama/baru.
+
+Scope yang belum diuji tetap browser/terminal nyata, DB TLS produksi dan deployment. Tidak ada perubahan/reset credential operasional pada tugas hari 10; lihat [laporan hari 10](progress/day-10.md).

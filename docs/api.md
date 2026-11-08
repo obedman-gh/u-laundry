@@ -1,8 +1,8 @@
-# Kontrak HTTP API — hari 09
+# Kontrak HTTP API — hari 10
 
-Server memakai storage domain dan autentikasi migration 000005. Ini perubahan kontrak dari handler legacy: tidak menerima total/harga/status klien saat create; data/akun pesanan-kasir-keuangan lama belum diimpor. Jangan aktifkan pada data operasional sebelum mapping, backup/restore dan rekonsiliasi; lihat [architecture.md](architecture.md).
+Server memakai storage domain dan autentikasi migration 000006. Ini perubahan kontrak dari handler legacy: tidak menerima total/harga/status klien saat create; data/akun pesanan-kasir-keuangan lama belum diimpor. Jangan aktifkan pada data operasional sebelum mapping, backup/restore dan rekonsiliasi; lihat [architecture.md](architecture.md).
 
-Semua body JSON memakai satu Content-Type application/json (charset UTF-8 opsional), maksimal 64 KiB termasuk whitespace, satu objek UTF-8 dan tanpa field asing. Content-Encoding selain identity atau header encoding berulang ditolak. Field duplikat, termasuk escape/alias kapitalisasi dan objek item bersarang, ditolak sebelum use case dipanggil. Rupiah dan gram/jumlah berupa integer. Cookie sesi HttpOnly diperlukan selain login/health/tracking. Bearer/localStorage tidak diterima lagi. JWT memerlukan HS256, issuer/audience/iat/exp/sub/username/role/jti dan registrasi sesi PostgreSQL; role/active tetap dimuat ulang setiap use case. Mutasi privat memerlukan X-CSRF-Token dan Origin persis PUBLIC_BASE_URL; login memerlukan Origin tersebut tanpa sesi awal. Akun baru belum memiliki bootstrap aman (pekerjaan berikutnya); utilitas setup-kasir lama hanya menyentuh tabel legacy.
+Semua body JSON memakai satu Content-Type application/json (charset UTF-8 opsional), maksimal 64 KiB termasuk whitespace, satu objek UTF-8 dan tanpa field asing. Content-Encoding selain identity atau header encoding berulang ditolak. Field duplikat, termasuk escape/alias kapitalisasi dan objek item bersarang, ditolak sebelum use case dipanggil. Rupiah dan gram/jumlah berupa integer. Cookie sesi HttpOnly diperlukan selain login/health/tracking. Bearer/localStorage tidak diterima lagi. JWT memerlukan HS256, issuer/audience/iat/exp/sub/username/role/jti dan registrasi sesi PostgreSQL; role/active tetap dimuat ulang setiap use case. Mutasi privat memerlukan X-CSRF-Token dan Origin persis PUBLIC_BASE_URL; login memerlukan Origin tersebut tanpa sesi awal. Owner pertama dibuat dengan command bootstrap-owner pada tabel staff kosong; staf berikutnya dikelola owner melalui API/UI. Utilitas setup-kasir lama hanya menyentuh tabel legacy dan bukan jalur akun domain.
 
 | Method/path | Scope dan kontrak |
 |---|---|
@@ -95,3 +95,49 @@ go build ./...
 
 Unit test memakai fake use case/lifecycle dan DOM sintetis. Integration autentikasi opt-in memakai PostgreSQL test disposable dan HTTPS lokal; command/bukti ada di [security.md](security.md) dan [laporan hari 09](progress/day-09.md). Browser nyata, printer, race dan release checks tidak dijalankan.
 
+
+## Permission matrix hari 10
+
+Izin berasal dari service.Allowed dan staf aktif yang dimuat ulang di use case, bukan role/body/query/header pilihan klien. Owner/admin/cashier adalah tiga role yang dipertahankan; admin tidak dapat mengelola akun atau menaikkan role sendiri.
+
+| Area / permission | Owner | Admin | Cashier |
+|---|---|---|---|
+| Daftar/buat/nonaktifkan/aktifkan/reset password/ubah role staf (`manage_staff`) | Ya | Tidak | Tidak |
+| Konfigurasi layanan dan harga (`configure_service`) | Ya | Ya | Tidak |
+| Buat pelanggan/pesanan, baca antrean/detail/struk, progres (`create_customer/create_order/read_orders/change_status`) | Ya | Ya | Ya |
+| Diskon nominal beralasan (`approve_discount`) | Ya | Ya | Tidak |
+| Pembatalan sesuai domain (`cancel_order`) | Ya | Ya | Tidak |
+| Catat pembayaran manual (`record_payment`) | Ya | Ya | Ya |
+| Laporan kas (`generate_report`) | Ya | Ya | Tidak |
+| Baca audit bisnis berfilter objek (`read_audit`) | Ya | Ya | Tidak |
+| Konfigurasi aplikasi (`manage_configuration`, policy yang dicadangkan) | Ya | Tidak | Tidak |
+| Login/logout/sesi sendiri | Ya | Ya | Ya |
+
+Configuration belum memiliki endpoint/modul; baris policy bukan tombol atau fitur baru. Refund/shift tetap scope hari berikutnya. Tracking publik memakai token capability dan tidak memberi akses internal. Role/permission tak dikenal selalu ditolak. Menyembunyikan navigasi staff hanya bantuan UI; API/use case tetap menolak admin/cashier meskipun JWT/body menyebut owner.
+
+## Akun staf dan audit
+
+Semua endpoint berikut memerlukan cookie aktif. Mutasi memerlukan Origin exact dan X-CSRF-Token seperti API lain. Respons staf hanya id/username/name/role/active/version/created_at/updated_at; tidak ada password lama, hash atau password baru dalam response.
+
+| Method/path | Permission dan payload |
+|---|---|
+| GET /api/staff?limit=20&offset=0 | Owner; array staf, default 20/maksimal 100 |
+| POST /api/staff | Owner; `{username,name,role,password}` → 201, active=true, version=1 |
+| PUT /api/staff/{id}/active | Owner; `{active:boolean,version:integer}` → 200 |
+| PUT /api/staff/{id}/role | Owner; `{role:owner/admin/cashier,version:integer}` → 200 |
+| POST /api/staff/{id}/reset-password | Owner; `{password,version:integer}` → 200 tanpa password |
+| GET /api/audit?entity=staff&entity_id=ID&limit=20&offset=0 | Owner/admin; array audit bisnis untuk objek yang diminta |
+
+Audit entity yang tersedia: staff/customer/service/order/payment/report; entity_id wajib berformat ID sah. Audit keamanan penolakan tetap di auth_events, belum menyediakan UI penelusuran umum (scope audit lengkap hari 17). Tidak ada endpoint hapus akun atau HTTP bootstrap publik. Password baru mengikuti policy hari 09 (minimal 12 karakter, maksimal 72 byte bcrypt); username 3–50 ASCII huruf/angka/titik/underscore/hyphen, unik exact/case-sensitive sebagaimana schema existing. Nama maksimal 100 karakter. Field actor_id/password_hash/active pada create ditolak sebagai unknown field.
+
+Perubahan memakai expected version. Form stale memberi 409 dan harus memuat ulang; username duplikat 409; target tak ditemukan 404; invalid input 400; role tidak berhak 403. Owner tidak dapat menonaktifkan atau menurunkan role sendiri (409). Minimal satu owner aktif dipertahankan. Pengelolaan staf dan bootstrap memakai satu transaction-level advisory lock; identitas actor dimuat setelah lock, agar request owner yang sudah kehilangan role tidak melewati pemeriksaan karena antrean.
+
+Perubahan credential/role/status mencabut sesi melalui trigger hari 09, dalam transaksi yang sama dengan update dan audit bisnis. Reset password sendiri menghapus cookie respons dan UI kembali ke login. Tidak ada reset otomatis, password bawaan, atau pengiriman password lewat email/notifikasi. Owner memasukkan password pengganti yang baru secara sadar; password lama tidak dapat dibaca.
+
+Aksi account audit: staff_bootstrapped/staff_created/staff_activated/staff_deactivated/staff_role_changed/staff_password_reset. Event hanya actor/target ID, action dan waktu, tanpa credential. Audit gagal → seluruh perubahan akun, kenaikan version dan pencabutan sesi rollback; tidak ada respons sukses parsial. Kegagalan commit bukan sukses.
+
+Penolakan authorization pada use case menghasilkan auth_events kind=access_denied dengan permission terkontrol, actor nullable, request ID server dan waktu. Event ditulis sesudah view/transaksi yang ditolak selesai sehingga tidak hilang oleh rollback dan tetap bekerja pada pool satu koneksi. Kegagalan menulis audit denial dipropagasikan sebagai error layanan/internal. Malformed JSON/CSRF/expired-session tetap memakai boundary hari 08/09, bukan jejak authorization berbasis role yang sama.
+
+UI owner: `/staff.html`, dengan navigasi dari antrean, daftar berpaginasi, create, pilih akun, status aktif, role dan reset password. Password input bertipe password/autocomplete=new-password, dikonfirmasi dan dibersihkan; data staf dirender textContent. Konflik mengosongkan pilihan dan menyediakan Muat ulang. Tidak ada penulisan offline atau penyimpanan credential di localStorage.
+
+Bootstrap, command test dan batas deployment dijelaskan di README bagian Akun awal. Lihat [laporan hari 10](progress/day-10.md).

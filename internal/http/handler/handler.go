@@ -38,6 +38,7 @@ type AuthUseCase interface {
 }
 type HealthUseCase interface{ Check(context.Context) error }
 type Dependencies struct {
+	Staff     StaffUseCase
 	Sessions  *security.Manager
 	Customers CustomerUseCase
 	Catalog   CatalogUseCase

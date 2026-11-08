@@ -37,9 +37,11 @@ func run(ctx context.Context) error {
 		return err
 	}
 	logger.Info("Database ULaundry siap; memulai server HTTP", "address", settings.HTTP.Address, "environment", settings.Environment)
-	uow := postgres.New(db)
+	store := postgres.New(db)
+	uow := service.WithAccessAudit(store, store)
 	runtime := service.Runtime{Clock: platform.SystemClock{}, IDs: platform.RandomIDs{}, Tokens: platform.RandomTokens{}}
 	use := handler.Dependencies{
+		Staff:     service.NewStaffManagement(uow, runtime, platform.Passwords{}),
 		Customers: service.NewCustomers(uow, runtime), Catalog: service.NewCatalog(uow, runtime), Orders: service.NewOrders(uow, runtime), Payments: service.NewPayments(uow, runtime),
 		Tracking: service.NewTracking(uow), Reports: service.NewReports(uow, runtime), Auth: service.NewAuth(uow, runtime, platform.Passwords{}, platform.JWTIssuer{Secret: settings.JWTSecret, Issuer: settings.JWTIssuer, Audience: settings.JWTAudience, Lifetime: settings.SessionLifetime}), Health: service.NewHealth(db),
 	}
@@ -49,7 +51,7 @@ func run(ctx context.Context) error {
 	} else if settings.Cookie.SameSite == "none" {
 		sameSite = http.SameSiteNoneMode
 	}
-	use.Sessions = &security.Manager{Tokens: security.Tokens{Secret: settings.JWTSecret, Issuer: settings.JWTIssuer, Audience: settings.JWTAudience, Lifetime: settings.SessionLifetime}, Store: uow, Secret: settings.Cookie.Secret, Origin: settings.PublicBaseURL, Secure: settings.Cookie.Secure, SameSite: sameSite, Limiter: &security.Limiter{}, PeerLimit: settings.LoginLimit, PeerWindow: settings.LoginWindow}
+	use.Sessions = &security.Manager{Tokens: security.Tokens{Secret: settings.JWTSecret, Issuer: settings.JWTIssuer, Audience: settings.JWTAudience, Lifetime: settings.SessionLifetime}, Store: store, Secret: settings.Cookie.Secret, Origin: settings.PublicBaseURL, Secure: settings.Cookie.Secure, SameSite: sameSite, Limiter: &security.Limiter{}, PeerLimit: settings.LoginLimit, PeerWindow: settings.LoginWindow}
 	if err := app.New(settings, db, use).Run(ctx); err != nil {
 		return err
 	}

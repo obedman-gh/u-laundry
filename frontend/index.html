@@ -28,6 +28,7 @@
   </head>
   <body>
     <h2>👕 Daftar Antrean ULaundry</h2>
+    <a id="staff-link" href="/staff.html" hidden>Pengelolaan staf</a>
     <button id="logout" type="button" disabled>Keluar</button>
     <div id="tempat-pesanan">Lagi ngambil data dari server Go...</div>
 
@@ -53,6 +54,7 @@
         try {
           const session = await read(await fetch("/api/session", { credentials: "same-origin" }));
           csrfToken = session.csrf_token;
+          document.getElementById("staff-link").hidden = session.role !== "owner";
           logout.disabled = false;
           const orders = await read(await fetch("/api/pesanan", { credentials: "same-origin" }));
           if (!Array.isArray(orders)) throw new Error("Respons daftar pesanan tidak valid.");

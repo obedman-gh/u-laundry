@@ -68,19 +68,25 @@ func conflict(code, field, message string) error {
 type Action string
 
 const (
-	CreateCustomer   Action = "create_customer"
-	ConfigureService Action = "configure_service"
-	CreateOrder      Action = "create_order"
-	ChangeStatus     Action = "change_status"
-	RecordPayment    Action = "record_payment"
-	CancelOrder      Action = "cancel_order"
-	ReadOrders       Action = "read_orders"
-	GenerateReport   Action = "generate_report"
+	ManageStaff         Action = "manage_staff"
+	ReadAudit           Action = "read_audit"
+	ManageConfiguration Action = "manage_configuration"
+	ApproveDiscount     Action = "approve_discount"
+	CreateCustomer      Action = "create_customer"
+	ConfigureService    Action = "configure_service"
+	CreateOrder         Action = "create_order"
+	ChangeStatus        Action = "change_status"
+	RecordPayment       Action = "record_payment"
+	CancelOrder         Action = "cancel_order"
+	ReadOrders          Action = "read_orders"
+	GenerateReport      Action = "generate_report"
 )
 
 func Allowed(role domain.Role, action Action) bool {
 	switch action {
-	case ConfigureService, CancelOrder, GenerateReport:
+	case ManageStaff, ManageConfiguration:
+		return role == domain.Owner
+	case ConfigureService, CancelOrder, GenerateReport, ReadAudit, ApproveDiscount:
 		return role == domain.Owner || role == domain.Admin
 	case CreateCustomer, CreateOrder, ChangeStatus, RecordPayment, ReadOrders:
 		return role == domain.Owner || role == domain.Admin || role == domain.Cashier
@@ -90,17 +96,17 @@ func Allowed(role domain.Role, action Action) bool {
 }
 func authorize(ctx context.Context, r repository.UserLookup, id string, action Action) (domain.Staff, error) {
 	if id == "" {
-		return domain.Staff{}, forbidden()
+		return domain.Staff{}, &AccessDenied{Permission: action}
 	}
 	a, err := r.GetStaff(ctx, id)
 	if errors.Is(err, repository.ErrNotFound) {
-		return domain.Staff{}, forbidden()
+		return domain.Staff{}, &AccessDenied{Permission: action}
 	}
 	if err != nil {
 		return domain.Staff{}, err
 	}
 	if !a.Active || a.Validate() != nil || !Allowed(a.Role, action) {
-		return domain.Staff{}, forbidden()
+		return domain.Staff{}, &AccessDenied{ActorID: a.ID, Permission: action}
 	}
 	return a, nil
 }

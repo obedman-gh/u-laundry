@@ -104,11 +104,20 @@ type PaymentPosting interface {
 type ExpensePosting interface {
 	RecordExpense(context.Context, domain.LedgerEntry) error
 }
+type StaffRecord struct {
+	Staff   domain.Staff
+	Version int64
+}
 type UserLookup interface {
+	ListStaff(context.Context, Page) ([]StaffRecord, error)
 	GetStaff(context.Context, string) (domain.Staff, error)
 	FindCredentials(context.Context, string) (Credentials, error)
 }
 type UserRegistration interface {
+	LockStaffManagement(context.Context) error
+	CountStaff(context.Context, bool) (int, error)
+	LockStaff(context.Context, string) (StaffRecord, error)
+	UpdateStaff(context.Context, domain.Staff, int64, string) error
 	AddStaff(context.Context, domain.Staff, string) error
 }
 type AuditReader interface {

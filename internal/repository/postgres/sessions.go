@@ -17,7 +17,7 @@ func authEvent(ctx context.Context, tx *sql.Tx, e security.Event) error {
 		return security.ErrUnavailable
 	}
 	switch e.Kind {
-	case "login_success", "login_failure", "login_limited", "logout":
+	case "login_success", "login_failure", "login_limited", "logout", "access_denied":
 	default:
 		return security.ErrUnavailable
 	}
@@ -25,7 +25,7 @@ func authEvent(ctx context.Context, tx *sql.Tx, e security.Event) error {
 	if e.ActorID != "" {
 		actor = e.ActorID
 	}
-	_, err := tx.ExecContext(ctx, `INSERT INTO public.auth_events(kind,actor_id,request_id,occurred_at) VALUES($1,$2,$3,$4)`, e.Kind, actor, e.RequestID, databaseTime(e.At))
+	_, err := tx.ExecContext(ctx, `INSERT INTO public.auth_events(kind,actor_id,request_id,occurred_at,permission) VALUES($1,$2,$3,$4,$5)`, e.Kind, actor, e.RequestID, databaseTime(e.At), e.Permission)
 	return dbError(ctx, "append authentication event", err)
 }
 func (s *Store) Create(ctx context.Context, r security.Record, e security.Event) error {

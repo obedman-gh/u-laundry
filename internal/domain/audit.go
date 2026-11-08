@@ -10,6 +10,12 @@ const (
 	ServiceConfigured  AuditAction = "service_configured"
 	OrderCancelled     AuditAction = "order_cancelled"
 	ReportGenerated    AuditAction = "report_generated"
+	StaffCreated       AuditAction = "staff_created"
+	StaffBootstrapped  AuditAction = "staff_bootstrapped"
+	StaffDeactivated   AuditAction = "staff_deactivated"
+	StaffActivated     AuditAction = "staff_activated"
+	StaffRoleChanged   AuditAction = "staff_role_changed"
+	StaffPasswordReset AuditAction = "staff_password_reset"
 	StaffLoggedIn      AuditAction = "staff_logged_in"
 	ReportEntity       AuditEntity = "report"
 	OrderCreated       AuditAction = "order_created"
@@ -36,7 +42,7 @@ func (a AuditAction) entity() AuditEntity {
 		return CustomerEntity
 	case ServiceConfigured, ServiceUpdated:
 		return ServiceEntity
-	case StaffUpdated, StaffLoggedIn:
+	case StaffUpdated, StaffLoggedIn, StaffCreated, StaffBootstrapped, StaffDeactivated, StaffActivated, StaffRoleChanged, StaffPasswordReset:
 		return StaffEntity
 	case ReportGenerated:
 		return ReportEntity

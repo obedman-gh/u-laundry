@@ -94,7 +94,7 @@ func TestPostgresPaymentUseCaseAtomicity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(after) != 5 || after[3].AppliedAt == nil {
+	if len(after) != 6 || after[3].AppliedAt == nil {
 		t.Fatal("workflow migration missing")
 	}
 	for i := 0; i < 3; i++ {

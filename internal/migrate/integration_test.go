@@ -104,7 +104,7 @@ func TestPostgresMigrations(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(states) != 5 {
+		if len(states) != 6 {
 			t.Fatal(states)
 		}
 		for _, state := range states {
@@ -141,7 +141,7 @@ func TestPostgresMigrations(t *testing.T) {
 	t.Run("fresh_constraints_timestamps_indexes_and_repeat", func(t *testing.T) {
 		db := newDB(t)
 		states, err := Status(ctx, db)
-		if err != nil || len(states) != 5 || states[0].AppliedAt != nil || states[1].AppliedAt != nil || states[2].AppliedAt != nil || states[3].AppliedAt != nil {
+		if err != nil || len(states) != 6 || states[0].AppliedAt != nil || states[1].AppliedAt != nil || states[2].AppliedAt != nil || states[3].AppliedAt != nil {
 			t.Fatalf("fresh status = %v, %v", states, err)
 		}
 		if scalar(t, db, `SELECT to_regclass('public.schema_migrations') IS NULL`) != "true" {
@@ -481,7 +481,7 @@ func TestPostgresMigrations(t *testing.T) {
 		`UPDATE schema_migrations SET checksum=repeat('0',64) WHERE version=1`,
 		`DELETE FROM schema_migrations WHERE version=1`,
 		`UPDATE schema_migrations SET name='changed' WHERE version=1`,
-		`INSERT INTO schema_migrations (version,name,checksum) VALUES (6,'future',repeat('0',64))`,
+		`INSERT INTO schema_migrations (version,name,checksum) VALUES (7,'future',repeat('0',64))`,
 	} {
 		t.Run("history_drift", func(t *testing.T) {
 			db := newDB(t)

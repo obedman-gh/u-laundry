@@ -157,3 +157,55 @@ func (v PaymentRequest) Validate() error {
 	}
 	return nil
 }
+
+func StaffRole(value string) bool { return value == "owner" || value == "admin" || value == "cashier" }
+
+type StaffRequest struct {
+	Username string `json:"username"`
+	Name     string `json:"name"`
+	Role     string `json:"role"`
+	Password string `json:"password"`
+}
+
+func (v StaffRequest) Validate() error {
+	if !Identifier(v.Username) || len(v.Username) < 3 || len(v.Username) > 50 || !text(v.Name, 100, true, false) || !StaffRole(v.Role) || v.Password == "" || len(v.Password) > 72 {
+		return bad("Data staf wajib lengkap dan valid.")
+	}
+	return nil
+}
+
+type StaffActiveRequest struct {
+	Active  *bool `json:"active"`
+	Version int64 `json:"version"`
+}
+
+func (v StaffActiveRequest) Validate() error {
+	if v.Active == nil || v.Version < 1 {
+		return bad("Status aktif dan versi positif wajib diisi.")
+	}
+	return nil
+}
+
+type StaffRoleRequest struct {
+	Role    string `json:"role"`
+	Version int64  `json:"version"`
+}
+
+func (v StaffRoleRequest) Validate() error {
+	if !StaffRole(v.Role) || v.Version < 1 {
+		return bad("Role dan versi wajib valid.")
+	}
+	return nil
+}
+
+type StaffPasswordRequest struct {
+	Password string `json:"password"`
+	Version  int64  `json:"version"`
+}
+
+func (v StaffPasswordRequest) Validate() error {
+	if v.Version < 1 || v.Password == "" || len(v.Password) > 72 {
+		return bad("Kata sandi baru dan versi positif wajib diisi.")
+	}
+	return nil
+}

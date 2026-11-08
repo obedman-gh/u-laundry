@@ -43,6 +43,11 @@ func (s *Orders) Create(ctx context.Context, actor string, in OrderInput) (Creat
 		if err != nil {
 			return err
 		}
+		if in.Discount > 0 {
+			if _, err := authorize(ctx, tx, actor, ApproveDiscount); err != nil {
+				return err
+			}
+		}
 		if len(in.Items) == 0 || len(in.Items) > 100 {
 			return invalid("items", "Pesanan harus berisi 1–100 item.")
 		}

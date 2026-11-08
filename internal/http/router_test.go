@@ -244,3 +244,22 @@ func (e *endpointRecorder) CurrentSession(w http.ResponseWriter, r *http.Request
 	e.record("session", w, r)
 }
 func (e *endpointRecorder) Logout(w http.ResponseWriter, r *http.Request) { e.record("logout", w, r) }
+
+func (e *endpointRecorder) ListStaff(w http.ResponseWriter, r *http.Request) {
+	e.record("list_staff", w, r)
+}
+func (e *endpointRecorder) CreateStaff(w http.ResponseWriter, r *http.Request) {
+	e.record("create_staff", w, r)
+}
+func (e *endpointRecorder) ChangeStaffActive(w http.ResponseWriter, r *http.Request) {
+	e.record("active_staff", w, r)
+}
+func (e *endpointRecorder) ChangeStaffRole(w http.ResponseWriter, r *http.Request) {
+	e.record("role_staff", w, r)
+}
+func (e *endpointRecorder) ResetStaffPassword(w http.ResponseWriter, r *http.Request) {
+	e.record("password_staff", w, r)
+}
+func (e *endpointRecorder) StaffAudit(w http.ResponseWriter, r *http.Request) {
+	e.record("audit", w, r)
+}

@@ -2,10 +2,11 @@
 
 ULaundry adalah aplikasi operasional laundry di Perumahan Viola milik Obed Erwin Manambe. Stack: Go (`net/http`), PostgreSQL, HTML, CSS, dan JavaScript tanpa framework frontend besar.
 
-Status per 8 November 2026: **autentikasi/session tahap 09 selesai, belum layak produksi**. Lihat [arsitektur](docs/architecture.md), [kontrak API dan perubahan kompatibilitas](docs/api.md), [aturan bisnis](docs/business-rules.md), [database](docs/database.md), [audit baseline](docs/audit-baseline.md), [kriteria penerimaan](docs/acceptance-criteria.md), [backlog](docs/backlog-30-days.md), dan [laporan hari 09](docs/progress/day-09.md) dan [keamanan autentikasi](docs/security.md).
+Status per 9 November 2026: **role dan pengelolaan staf tahap 10 selesai, belum layak produksi**. Lihat [arsitektur](docs/architecture.md), [kontrak API dan perubahan kompatibilitas](docs/api.md), [aturan bisnis](docs/business-rules.md), [database](docs/database.md), [audit baseline](docs/audit-baseline.md), [kriteria penerimaan](docs/acceptance-criteria.md), [backlog](docs/backlog-30-days.md), dan [laporan hari 10](docs/progress/day-10.md) dan [keamanan autentikasi](docs/security.md).
 
 ## Implementasi saat ini
 
+- Owner dapat mengelola staf melalui /staff.html; API/use case menegakkan matrix izin dan audit. Bootstrap akun pertama tanpa password hardcoded tersedia.
 - Login staf generik dengan bcrypt/JWT HS256, claims wajib, cookie HttpOnly, sesi PostgreSQL, CSRF, logout/revocation dan rate limit; role dimuat ulang pada use case.
 - Create customer, configure service, create order dengan perhitungan katalog server, status/version dan cancellation terkontrol, serta daftar/detail berfilter/pagination.
 - Endpoint payment terpisah, payment-ledger-audit satu transaksi, replay key identik tanpa posting ulang; `Sudah Lunas` bukan status operasional.
@@ -20,7 +21,7 @@ Struktur: `cmd/server/` menyusun pool, runtime clock/ID/token, repository dan us
 
 Use case dipisah menjadi Customers/Catalog/Orders/Payments/Tracking/Reports/Auth/Health, dengan clock/ID/token generator yang dapat diganti untuk test. Payload create order menolak harga/total klien; snapshot katalog dan diskon sah dihitung domain. Kegagalan audit menyebabkan rollback perubahan pada use case, bukan keberhasilan parsial. Pilihan kebijakan domain hari 05 tetap perlu ditinjau sebelum aktivasi operasional.
 
-Migration **000004** menambah version layanan, hash token tracking dan allowed audit actions. `up` menerapkan lima versi; 000001–000003 tetap immutable. **Server sekarang memakai tabel domain, bukan pesanan/kasir/keuangan lama.** Data legacy tetap, tetapi tidak otomatis terlihat/diimpor atau dipakai login. Sebelum deployment data nyata wajib backup/restore salinan, mapping/import akun/status/uang, rekonsiliasi dan satu writer. Bootstrap owner domain aman belum tersedia; utilitas setup-kasir lama tidak membuat akun domain. Jangan menganggap perubahan kode ini sudah melakukan cutover data operasional. Demo SQL tetap khusus legacy dan tidak lagi menjadi data yang dibaca server baru.
+Migration **000004** menambah version layanan, hash token tracking dan allowed audit actions. `up` menerapkan enam versi; 000001–000003 tetap immutable. **Server sekarang memakai tabel domain, bukan pesanan/kasir/keuangan lama.** Data legacy tetap, tetapi tidak otomatis terlihat/diimpor atau dipakai login. Sebelum deployment data nyata wajib backup/restore salinan, mapping/import akun/status/uang, rekonsiliasi dan satu writer. Bootstrap owner domain aman tersedia lewat cmd/admin; utilitas setup-kasir lama tidak membuat akun domain. Jangan menganggap perubahan kode ini sudah melakukan cutover data operasional. Demo SQL tetap khusus legacy dan tidak lagi menjadi data yang dibaca server baru.
 
 ## Prasyarat dan setup lokal
 
@@ -70,7 +71,7 @@ Runner hanya memerlukan konfigurasi `APP_ENV`/DB, dengan kebijakan SSL/credentia
 
 Upgrade skema lama terverifikasi pada fixture `init.sql`, varian tanpa kolom waktu, dan instalasi parsial dalam PostgreSQL 16. **Sebelum upgrade data nyata, hentikan penulisan, backup dan verifikasi restore pada DB baru**, lalu jalankan migration pada salinan lebih dahulu. Data negatif, tipe ledger asing, username duplikat, timestamp wajib NULL atau tipe monetary selain integer menggagalkan upgrade tanpa memperbaiki/menghapus data. Lihat [panduan database](docs/database.md) untuk preflight, indeks, batas kompatibilitas, backup dan rollback aman. Database operasional belum diperiksa/diubah hari 04.
 
-`migrations/init.sql` digantikan runner. Dua utilitas DDL lama dinonaktifkan; setup-kasir deprecated hanya bekerja pada tabel legacy/nonproduction dan tidak boleh dipakai untuk bootstrap server baru. Fresh schema mendukung order domain; akun awal aman/import data tetap pekerjaan berikutnya. Kontrak baru memakai customer_id/items, bukan total_biaya/nama_customer bebas; detail, receipt dan report membutuhkan staf/role yang sesuai. Lihat [api.md](docs/api.md) sebelum memakai client lama.
+`migrations/init.sql` digantikan runner. Dua utilitas DDL lama dinonaktifkan; setup-kasir deprecated hanya bekerja pada tabel legacy/nonproduction dan tidak boleh dipakai untuk bootstrap server baru. Fresh schema mendukung order domain; bootstrap owner tersedia; import data tetap pekerjaan terpisah. Kontrak baru memakai customer_id/items, bukan total_biaya/nama_customer bebas; detail, receipt dan report membutuhkan staf/role yang sesuai. Lihat [api.md](docs/api.md) sebelum memakai client lama.
 
 Server pengembangan setelah DB tersedia:
 
@@ -78,7 +79,7 @@ Server pengembangan setelah DB tersedia:
 go run ./cmd/server
 ```
 
-Buka `http://localhost:8080/login.html` sesuai PUBLIC_BASE_URL/origin setelah schema dan akun staf domain tersedia. Konfigurasi divalidasi sekali; perubahan memerlukan restart. Aset default relatif terhadap cwd repository. Shutdown menguras request sebelum menutup DB; seluruh query bisnis memakai request context. Detail/struk privat; login/daftar memakai cookie dan daftar dirender lewat DOM aman. Bootstrap/import akun, UI POS lengkap dan acceptance keamanan/operasional tetap diperlukan sebelum penggunaan nyata. Jangan mengekspos deployment publik dari increment ini.
+Buka `http://localhost:8080/login.html` sesuai PUBLIC_BASE_URL/origin setelah schema dan akun staf domain tersedia. Konfigurasi divalidasi sekali; perubahan memerlukan restart. Aset default relatif terhadap cwd repository. Shutdown menguras request sebelum menutup DB; seluruh query bisnis memakai request context. Detail/struk privat; login/daftar memakai cookie dan daftar dirender lewat DOM aman. Import akun/data legacy, UI POS lengkap dan acceptance keamanan/operasional tetap diperlukan sebelum penggunaan nyata. Jangan mengekspos deployment publik dari increment ini.
 
 ## Perintah verifikasi
 
@@ -94,7 +95,7 @@ Buka `http://localhost:8080/login.html` sesuai PUBLIC_BASE_URL/origin setelah sc
 | PostgreSQL repository terarah | Isi `ULAUNDRY_TEST_ADMIN_DSN` seperti migration test, lalu `go test ./internal/repository/... -count=1 -timeout=120s -v`; membuat/menghapus DB `ulaundry_repository_test_*`; tidak membaca `.env` |
 | HTTP/middleware/wiring hari 08 | `go test ./internal/http/... ./internal/app -count=1 -timeout=45s` — success/error contract, malformed/oversized/duplicate JSON, query/path, 404/405/HEAD, CORS/JWT, panic redaction, lifecycle; tanpa DB |
 | Autentikasi/session hari 09 | `go test ./internal/security ./internal/http/... ./internal/config ./internal/platform ./internal/app -count=1 -timeout=60s` — claims, cookie/CSRF/logout, rate limit dan startup; integration auth opt-in: lihat docs/security.md |
-| Kompatibilitas pesan login | `node --test scripts/frontend-contract.test.cjs` — 5 test JavaScript/DOM sintetis, Node.js 18+; bukan browser/visual acceptance |
+| Kompatibilitas pesan login | `node --test scripts/frontend-contract.test.cjs` — 8 test JavaScript/DOM sintetis, Node.js 18+; bukan browser/visual acceptance |
 | Runner/config migration unit | `go test ./internal/config ./internal/migrate ./cmd/migrate ./migrations -count=1 -timeout=45s` (integration di-skip jika env test tidak diisi) |
 | PostgreSQL migration fresh/upgrade | Isi `ULAUNDRY_TEST_ADMIN_DSN` ke database `postgres` pada **cluster test khusus**, lalu `go test ./internal/migrate -run '^TestPostgresMigrations$' -count=1 -timeout=120s -v`; membuat/menghapus DB test acak, tidak membaca `.env`; lihat [isolasi test](docs/database.md#verifikasi-terarah) |
 | Static analysis HTTP/app | `go vet ./internal/http/... ./internal/app` — lulus hari 08; `go vet ./...` belum menjadi bukti seluruh repository |
@@ -115,3 +116,49 @@ Path cache tersebut di luar repository `dev`; sesuaikan dengan workspace lokal. 
 ## Deployment
 
 Target: Ubuntu, binary Go + systemd, reverse proxy, dan Cloudflare Tunnel. Repository belum memiliki konfigurasi deployment, rollback, backup/restore teruji atau CI. Kesiapan deployment publik belum dibuktikan; penuhi kriteria penerimaan sebelum rilis. Palet biru dan identitas ULaundry dipertahankan.
+
+## Akun awal dan pengelolaan staf
+
+Tidak ada username/password bawaan atau seed akun otomatis. Command bootstrap hanya membuat **owner pertama ketika tabel domain staff benar-benar kosong**, termasuk tidak adanya akun nonaktif. Jika sudah ada staf, command menolak; bukan jalur reset/recovery atau pengganti import akun legacy. Dua bootstrap serentak hanya menghasilkan satu akun. Tidak menghapus/mengubah kasir lama atau data bisnis.
+
+Dari PowerShell pada instalasi yang konfigurasi DB-nya sudah benar, setelah backup dan restore salinan diverifikasi untuk data existing:
+
+```powershell
+Set-Location F:\project\ulaundry\dev
+go run ./cmd/migrate status
+go run ./cmd/migrate up
+go run ./cmd/admin bootstrap-owner -username owner -name "Nama Owner"
+go run ./cmd/server
+```
+
+Password dan konfirmasi diminta melalui terminal **tanpa echo** menggunakan [x/term.ReadPassword](https://pkg.go.dev/golang.org/x/term#ReadPassword), lalu di-hash sesuai policy hari 09. Pilih password baru; jangan memakai fixture test. Tidak ada flag password plaintext, password di stdout, file credential sementara, atau akun hardcoded. Command memvalidasi password sebelum membuka DB dan menggunakan LoadDatabase dengan policy TLS/credential production yang sama; tidak memerlukan JWT/cookie secret hanya untuk bootstrap. Migration harus lengkap terlebih dahulu. Mode interaktif memerlukan terminal nyata. x/term v0.47.0 (dan x/sys transitive) ditambahkan untuk pembacaan terminal aman lintas Windows/Ubuntu, bukan framework aplikasi.
+
+Untuk otomasi terkontrol, `-password-stdin` menerima satu baris dari pipe privat dan menolak terminal yang menampilkan input. Jangan menulis password literal dalam argumen/history/env, file sementara, atau transcript. Contoh Ubuntu dengan prompt systemd yang menyalurkan hasil langsung ke stdin binary admin:
+
+```bash
+systemd-ask-password 'Password owner baru ULaundry' | ./ulaundry-admin bootstrap-owner -username owner -name 'Nama Owner' -password-stdin
+```
+
+Jangan gunakan command itu sebagai recovery akun existing. Pada kegagalan dengan hasil jaringan tak pasti, periksa keberadaan akun sebelum mencoba lagi; bootstrap ulang tetap ditolak bila akun pertama sudah commit. Command tidak otomatis menjalankan migration, mengaktifkan server, atau mereset credential.
+
+Setelah server dijalankan manual, masuk melalui `http://localhost:8080/login.html` sesuai PUBLIC_BASE_URL. Owner membuka `/staff.html` dari navigasi antrean untuk membuat owner/admin/cashier lain, menonaktifkan/mengaktifkan, mengganti role atau mereset password. Admin/cashier tidak dapat mengelola staf meskipun mengirim request langsung. Reset sendiri mengakhiri sesi sendiri dan memerlukan login dengan password baru. Owner tidak dapat menonaktifkan atau menurunkan role sendiri; pengalihan owner dilakukan dari owner aktif lain. Password lama/hash tidak tersedia di UI/API.
+
+Lihat [permission matrix dan kontrak akun](docs/api.md#permission-matrix-hari-10). Konfigurasi aplikasi hanya punya policy owner saat ini; tidak membuat modul konfigurasi baru. Audit penolakan penting disimpan terpisah dari transaksi bisnis yang rollback. Migration 000006 menambah version staf, allowed audit actions dan permission denial tanpa mengganti akun/hash existing; SQL 000001–000005 tetap immutable.
+
+Verifikasi terarah hari 10 (tidak membaca .env/test DB operasional):
+
+```powershell
+go test ./internal/service -skip '^TestPostgres' -count=1 -timeout=60s
+go test ./internal/http/... ./cmd/admin ./internal/migrate -skip '^TestPostgres' -count=1 -timeout=60s
+node --test scripts/frontend-contract.test.cjs
+go build ./...
+```
+
+Integration khusus constraint user/role dan transaction terkait (cluster test khusus, role test dengan CREATEDB, target postgres untuk membuat/menghapus DB disposable):
+
+```powershell
+$env:ULAUNDRY_TEST_ADMIN_DSN = 'postgres://TEST_ADMIN@127.0.0.1:55439/postgres?sslmode=disable'
+go test ./internal/service -run '^TestPostgresStaffAdministration$' -count=1 -timeout=90s -v
+```
+
+Bukti hari 10: permission/negative paths/rollback dan stdin command lulus; 8 test JavaScript lulus; PostgreSQL 16 membuktikan bootstrap race, upgrade 5→6 dengan akun/hash existing sintetis tetap, username/role constraints, denial audit pada pool satu koneksi, version conflict, revocation dan audit rollback. Native build/vet dan cross-build command admin Linux amd64 lulus. Prompt TTY nyata Windows/Ubuntu, browser/mobile visual dan deployment produksi belum diuji; dependency ReadPassword telah ditinjau dan jalur stdin diuji tanpa credential nyata. Tidak menjalankan full suite atau bootstrap pada akun operasional.

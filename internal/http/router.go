@@ -11,6 +11,12 @@ import (
 
 // Endpoints allows routing to be checked independently of SQL and bootstrap.
 type Endpoints interface {
+	ListStaff(http.ResponseWriter, *http.Request)
+	CreateStaff(http.ResponseWriter, *http.Request)
+	ChangeStaffActive(http.ResponseWriter, *http.Request)
+	ChangeStaffRole(http.ResponseWriter, *http.Request)
+	ResetStaffPassword(http.ResponseWriter, *http.Request)
+	StaffAudit(http.ResponseWriter, *http.Request)
 	CurrentSession(http.ResponseWriter, *http.Request)
 	Logout(http.ResponseWriter, *http.Request)
 	HealthCheck(http.ResponseWriter, *http.Request)
@@ -65,6 +71,11 @@ func NewRouter(h Endpoints, m *middleware.Middleware, assets http.FileSystem) ht
 	register("/api/customers", map[string]http.HandlerFunc{"POST": m.ValidasiJWT(h.CreateCustomer)})
 	register("/api/services", map[string]http.HandlerFunc{"POST": m.ValidasiJWT(h.ConfigureService)})
 	register("/api/services/{id}", map[string]http.HandlerFunc{"PUT": m.ValidasiJWT(h.ConfigureService)})
+	register("/api/staff", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.ListStaff), "POST": m.ValidasiJWT(h.CreateStaff)})
+	register("/api/staff/{id}/active", map[string]http.HandlerFunc{"PUT": m.ValidasiJWT(h.ChangeStaffActive)})
+	register("/api/staff/{id}/role", map[string]http.HandlerFunc{"PUT": m.ValidasiJWT(h.ChangeStaffRole)})
+	register("/api/staff/{id}/reset-password", map[string]http.HandlerFunc{"POST": m.ValidasiJWT(h.ResetStaffPassword)})
+	register("/api/audit", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.StaffAudit)})
 	api.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		response.Fail(w, r, http.StatusNotFound, "not_found", "Endpoint tidak ditemukan.")
 	})

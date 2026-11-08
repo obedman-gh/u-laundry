@@ -56,3 +56,22 @@ type ReportResponse struct {
 	Outflow int64     `json:"total_pengeluaran"`
 	Balance int64     `json:"saldo_akhir"`
 }
+
+type StaffResponse struct {
+	ID        string    `json:"id"`
+	Username  string    `json:"username"`
+	Name      string    `json:"name"`
+	Role      string    `json:"role"`
+	Active    bool      `json:"active"`
+	Version   int64     `json:"version"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+type AuditResponse struct {
+	ID         string    `json:"id"`
+	ActorID    string    `json:"actor_id"`
+	Action     string    `json:"action"`
+	Entity     string    `json:"entity"`
+	EntityID   string    `json:"entity_id"`
+	OccurredAt time.Time `json:"occurred_at"`
+}

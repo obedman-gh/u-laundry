@@ -66,3 +66,33 @@ test('cashier loads session and orders with cookies, renders safely, logs out wi
  assert.equal(calls[2].url,'/api/logout');assert.equal(calls[2].options.headers['X-CSRF-Token'],'csrf-synthetic');
  assert.equal(window.location.href,'/login.html');
 });
+
+
+async function staffPage(role = 'owner', conflict = false) {
+ const elements=new Map(),calls=[];
+ const make=()=>({dataset:{},style:{},children:[],value:'',hidden:true,disabled:false,textContent:'',appendChild(c){this.children.push(c);},replaceChildren(){this.children=[];},addEventListener(type,fn){this[type]=fn;}});
+ const element=id=>{if(!elements.has(id))elements.set(id,make());return elements.get(id);};
+ const records=[{id:'owner-1',name:'Owner',username:'owner.test',role:'owner',active:true,version:1},{id:'cashier-1',name:'<script>synthetic</script>',username:'cashier.test',role:'cashier',active:true,version:2}];
+ const context=vm.createContext({document:{getElementById:element,createElement:make},window:{location:{href:''},confirm:()=>true},fetch:async(url,options)=>{
+  calls.push({url,options});let body=url==='/api/session'?{role,user_id:'owner-1',csrf_token:'csrf-test'}:records;
+  if(options.method){body=conflict?{error:{message:'Data sudah berubah.'}}:records[1];assert.equal(options.headers['X-CSRF-Token'],'csrf-test');}
+  return {ok:!options.method||!conflict,status:options.method&&conflict?409:200,json:async()=>body};
+ }});
+ vm.runInContext(fs.readFileSync(path.join(__dirname,'../frontend/staff.js'),'utf8'),context);
+ await new Promise(resolve=>setImmediate(resolve));return {element,calls,context};
+}
+test('staff UI denies non-owner without requesting the staff list',async()=>{
+ const page=await staffPage('cashier');assert.equal(page.calls.length,1);assert.equal(page.element('management').hidden,true);assert.match(page.element('message').textContent,/hanya dapat digunakan owner/);
+});
+test('owner staff UI creates an account without rendering or retaining its password',async()=>{
+ const page=await staffPage();const e=page.element;
+ assert.equal(e('management').hidden,false);assert.equal(e('staff-list').children[1].children[0].textContent,'<script>synthetic</script> / cashier.test');
+ e('create-name').value='Staff';e('create-username').value='new.test';e('create-role').value='cashier';e('create-password').value=e('create-confirm').value='Frasa sandi sintetis';
+ await e('create-form').submit({preventDefault(){}});
+ const request=page.calls.find(c=>c.url==='/api/staff'&&c.options.method==='POST');assert.ok(request);assert.equal(JSON.parse(request.options.body).password,'Frasa sandi sintetis');assert.equal(e('create-password').value,'');assert.equal(e('create-confirm').value,'');assert.doesNotMatch(e('message').textContent,/Frasa/);
+});
+test('staff changes send version and CSRF; stale responses clear the selection',async()=>{
+ const page=await staffPage('owner',true);const e=page.element;e('staff-list').children[1].children[3].children[0].click();
+ e('edit-password').value=e('edit-confirm').value='Frasa pengganti sintetis';e('password-form').submit({preventDefault(){}});await new Promise(resolve=>setImmediate(resolve));
+ const request=page.calls.find(c=>c.url.endsWith('/reset-password'));assert.ok(request);assert.equal(JSON.parse(request.options.body).version,2);assert.equal(e('edit-password').value,'');assert.equal(e('password-button').disabled,true);assert.match(e('message').textContent,/Data sudah berubah/);
+});
