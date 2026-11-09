@@ -80,7 +80,11 @@ func (h *Handler) CreateCustomer(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	result, err := h.use.Customers.Create(r.Context(), middleware.ActorID(r.Context()), service.CustomerInput{Name: body.Name, Contact: body.Contact, Notes: body.Notes})
+	if body.Version != 0 {
+		writeError(w, r, &dto.ValidationError{Message: "Versi create harus nol."})
+		return
+	}
+	result, err := h.use.Customers.Create(r.Context(), middleware.ActorID(r.Context()), service.CustomerInput{Name: body.Name, Contact: body.Contact, Address: body.Address, Notes: body.Notes})
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -104,7 +108,7 @@ func (h *Handler) ConfigureService(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, &dto.ValidationError{Message: "Versi konfigurasi tidak sesuai operasi create/update."})
 		return
 	}
-	result, err := h.use.Catalog.Configure(r.Context(), middleware.ActorID(r.Context()), service.ServiceInput{ID: id, Name: body.Name, Unit: domain.Unit(body.Unit), UnitPrice: domain.Money(body.UnitPrice), Turnaround: time.Duration(body.Minutes) * time.Minute, Active: *body.Active, ExpectedVersion: body.Version})
+	result, err := h.use.Catalog.Configure(r.Context(), middleware.ActorID(r.Context()), service.ServiceInput{ID: id, Name: body.Name, Unit: domain.Unit(dto.StoredUnit(body.Unit)), UnitPrice: domain.Money(body.UnitPrice), Turnaround: time.Duration(body.Minutes) * time.Minute, Active: *body.Active, DisplayOrder: body.DisplayOrder, ExpectedVersion: body.Version})
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -113,7 +117,7 @@ func (h *Handler) ConfigureService(w http.ResponseWriter, r *http.Request) {
 	if id != "" {
 		status = http.StatusOK
 	}
-	response.JSON(w, r, status, dto.ServiceResponse{ID: result.Service.ID, Version: result.Version})
+	response.JSON(w, r, status, serviceView(result))
 }
 func (h *Handler) GetNeraca(w http.ResponseWriter, r *http.Request) {
 	values, err := query(r, "from", "to")

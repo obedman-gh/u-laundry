@@ -94,7 +94,7 @@ func TestPostgresPaymentUseCaseAtomicity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(after) != 6 || after[3].AppliedAt == nil {
+	if len(after) != 8 || after[3].AppliedAt == nil {
 		t.Fatal("workflow migration missing")
 	}
 	for i := 0; i < 3; i++ {
@@ -202,7 +202,7 @@ func TestPostgresPaymentUseCaseAtomicity(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	view, err := NewTracking(base).Get(ctx, o.TrackingToken)
+	view, err := NewTracking(base, rt).Get(ctx, o.TrackingToken)
 	if err != nil || view.Status != domain.Received {
 		t.Fatal("tracking projection", err)
 	}

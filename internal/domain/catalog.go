@@ -7,6 +7,7 @@ import (
 
 type Customer struct {
 	ID, Name, Contact, Notes string
+	Address                  string
 	CreatedAt, UpdatedAt     time.Time
 }
 
@@ -39,7 +40,34 @@ func (c Customer) Validate() error {
 	if err := text("customer.notes", c.Notes, 1000, false, true); err != nil {
 		return err
 	}
+	if err := text("customer.address", c.Address, 500, false, true); err != nil {
+		return err
+	}
 	return timestamps(c.CreatedAt, c.UpdatedAt)
+}
+
+func (c Customer) Edit(name, contact, address, notes string, at time.Time) (Customer, error) {
+	number, err := NormalizeContact(contact)
+	if err != nil {
+		return Customer{}, err
+	}
+	c.Name, c.Contact, c.Address, c.Notes, c.UpdatedAt = strings.TrimSpace(name), number, cleanNotes(address), cleanNotes(notes), at
+	if err := c.Validate(); err != nil {
+		return Customer{}, err
+	}
+	return c, nil
+}
+
+func CustomerSearch(term string) (string, error) {
+	term = strings.TrimSpace(term)
+	if err := text("query", term, 100, false, false); err != nil {
+		return "", err
+	}
+	// Normalize a complete phone number so local and +62 searches agree.
+	if number, err := NormalizeContact(term); err == nil && number != "" {
+		return number, nil
+	}
+	return term, nil
 }
 
 type Unit string
@@ -55,6 +83,7 @@ type Service struct {
 	UnitPrice            Money
 	Turnaround           time.Duration
 	Active               bool
+	DisplayOrder         int
 	CreatedAt, UpdatedAt time.Time
 }
 
@@ -73,6 +102,9 @@ func (s Service) Validate() error {
 	}
 	if s.Turnaround <= 0 {
 		return invalid("service.turnaround", "Durasi layanan harus positif.")
+	}
+	if s.DisplayOrder < 0 || s.DisplayOrder > 1000000 {
+		return invalid("service.display_order", "Urutan tampilan harus 0–1000000.")
 	}
 	return timestamps(s.CreatedAt, s.UpdatedAt)
 }

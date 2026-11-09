@@ -21,6 +21,7 @@ type ServiceInput struct {
 	UnitPrice       domain.Money
 	Turnaround      time.Duration
 	Active          bool
+	DisplayOrder    int
 	ExpectedVersion int64
 }
 
@@ -35,7 +36,7 @@ func (s *Catalog) Configure(ctx context.Context, actor string, in ServiceInput) 
 		if err != nil {
 			return err
 		}
-		v := domain.Service{ID: in.ID, Name: strings.TrimSpace(in.Name), Unit: in.Unit, UnitPrice: in.UnitPrice, Turnaround: in.Turnaround, Active: in.Active, CreatedAt: at, UpdatedAt: at}
+		v := domain.Service{ID: in.ID, Name: strings.TrimSpace(in.Name), Unit: in.Unit, UnitPrice: in.UnitPrice, Turnaround: in.Turnaround, Active: in.Active, DisplayOrder: in.DisplayOrder, CreatedAt: at, UpdatedAt: at}
 		version := int64(1)
 		if in.ID == "" {
 			if in.ExpectedVersion != 0 {
@@ -71,6 +72,9 @@ func (s *Catalog) Configure(ctx context.Context, actor string, in ServiceInput) 
 			}
 			version = old.Version + 1
 		}
+		if err := tx.AppendServiceRevision(ctx, repository.ServiceRevision{ServiceRecord: repository.ServiceRecord{Service: v, Version: version}, ActorID: a.ID}); err != nil {
+			return err
+		}
 		if err := audit(ctx, tx, s.runtime, a.ID, domain.ServiceConfigured, domain.ServiceEntity, v.ID, at); err != nil {
 			return err
 		}
@@ -79,6 +83,66 @@ func (s *Catalog) Configure(ctx context.Context, actor string, in ServiceInput) 
 	})
 	if err != nil {
 		return repository.ServiceRecord{}, err
+	}
+	return result, nil
+}
+
+func (s *Catalog) List(ctx context.Context, actor string, filter repository.ServiceFilter) ([]repository.ServiceRecord, error) {
+	var result []repository.ServiceRecord
+	err := s.uow.View(ctx, func(r repository.Readers) error {
+		action := ReadOrders
+		if filter.IncludeInactive {
+			action = ConfigureService
+		}
+		if _, err := authorize(ctx, r, actor, action); err != nil {
+			return err
+		}
+		p, err := filter.Page.Normalize()
+		if err != nil {
+			return err
+		}
+		filter.Page = p
+		result, err = r.ListServices(ctx, filter)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+func (s *Catalog) Get(ctx context.Context, actor, id string) (repository.ServiceRecord, error) {
+	var result repository.ServiceRecord
+	err := s.uow.View(ctx, func(r repository.Readers) error {
+		if _, err := authorize(ctx, r, actor, ConfigureService); err != nil {
+			return err
+		}
+		var err error
+		result, err = r.GetServiceRecord(ctx, id)
+		return err
+	})
+	if err != nil {
+		return repository.ServiceRecord{}, err
+	}
+	return result, nil
+}
+func (s *Catalog) History(ctx context.Context, actor, id string, page repository.Page) ([]repository.ServiceRevision, error) {
+	var result []repository.ServiceRevision
+	err := s.uow.View(ctx, func(r repository.Readers) error {
+		if _, err := authorize(ctx, r, actor, ConfigureService); err != nil {
+			return err
+		}
+		if _, err := r.GetServiceRecord(ctx, id); err != nil {
+			return err
+		}
+		p, err := page.Normalize()
+		if err != nil {
+			return err
+		}
+		result, err = r.ServiceHistory(ctx, id, p)
+		return err
+	})
+	if err != nil {
+		return nil, err
 	}
 	return result, nil
 }

@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"database/sql"
 	"time"
 
 	"ulaundry/internal/domain"
@@ -12,7 +11,7 @@ import (
 func (s *session) LockService(ctx context.Context, id string) (repository.ServiceRecord, error) {
 	var v domain.Service
 	var version int64
-	err := s.tx.QueryRowContext(ctx, `SELECT `+serviceColumns+`,version FROM public.services WHERE id=$1 FOR UPDATE`, id).Scan(&v.ID, &v.Name, &v.Unit, &v.UnitPrice, &v.Turnaround, &v.Active, &v.CreatedAt, &v.UpdatedAt, &version)
+	err := s.tx.QueryRowContext(ctx, `SELECT `+serviceColumns+`,version FROM public.services WHERE id=$1 FOR UPDATE`, id).Scan(&v.ID, &v.Name, &v.Unit, &v.UnitPrice, &v.Turnaround, &v.Active, &v.CreatedAt, &v.UpdatedAt, &v.DisplayOrder, &version)
 	if err != nil {
 		return repository.ServiceRecord{}, dbError(ctx, "lock service", err)
 	}
@@ -25,7 +24,7 @@ func (s *session) UpdateService(ctx context.Context, v domain.Service, expected 
 	if err := v.Validate(); err != nil {
 		return err
 	}
-	result, err := s.tx.ExecContext(ctx, `UPDATE public.services SET name=$1,unit=$2,unit_price=$3,turnaround_ns=$4,active=$5,updated_at=$6,version=version+1 WHERE id=$7 AND version=$8`, v.Name, v.Unit, v.UnitPrice, int64(v.Turnaround), v.Active, databaseTime(v.UpdatedAt), v.ID, expected)
+	result, err := s.tx.ExecContext(ctx, `UPDATE public.services SET name=$1,unit=$2,unit_price=$3,turnaround_ns=$4,active=$5,updated_at=$6,version=version+1,display_order=$9 WHERE id=$7 AND version=$8`, v.Name, v.Unit, v.UnitPrice, int64(v.Turnaround), v.Active, databaseTime(v.UpdatedAt), v.ID, expected, v.DisplayOrder)
 	if err != nil {
 		return dbError(ctx, "configure service", err)
 	}
@@ -38,22 +37,51 @@ func (s *session) UpdateService(ctx context.Context, v domain.Service, expected 
 	}
 	return nil
 }
-func (s *session) AddTracking(ctx context.Context, id string, hash [32]byte) error {
-	_, err := s.tx.ExecContext(ctx, `INSERT INTO public.order_tracking_tokens(order_id,token_hash) VALUES ($1,$2)`, id, hash[:])
+func (s *session) AddTracking(ctx context.Context, id string, hash [32]byte, expires time.Time) error {
+	if expires.IsZero() {
+		return corrupt("register tracking expiry")
+	}
+	_, err := s.tx.ExecContext(ctx, `INSERT INTO public.order_tracking_tokens(order_id,token_hash,expires_at) VALUES ($1,$2,$3)`, id, hash[:], databaseTime(expires))
 	return dbError(ctx, "register tracking", err)
 }
-func (s *session) GetTracking(ctx context.Context, hash [32]byte) (repository.TrackingRecord, error) {
+func (s *session) GetTracking(ctx context.Context, hash [32]byte, at time.Time) (repository.TrackingRecord, error) {
 	var v repository.TrackingRecord
-	var ready, collected sql.NullTime
-	err := s.tx.QueryRowContext(ctx, `SELECT o.status,o.estimated_ready_at,o.ready_at,o.collected_at FROM public.orders o JOIN public.order_tracking_tokens t ON t.order_id=o.id WHERE t.token_hash=$1`, hash[:]).Scan(&v.Status, &v.EstimatedReadyAt, &ready, &collected)
+	err := s.tx.QueryRowContext(ctx, `SELECT o.status,o.estimated_ready_at FROM public.orders o JOIN public.order_tracking_tokens t ON t.order_id=o.id WHERE t.token_hash=$1 AND t.expires_at>$2`, hash[:], databaseTime(at)).Scan(&v.Status, &v.EstimatedReadyAt)
 	if err != nil {
 		return v, dbError(ctx, "get tracking", err)
 	}
-	v.ReadyAt, v.CollectedAt = ready.Time, collected.Time
 	if !v.Status.Valid() || v.EstimatedReadyAt.IsZero() {
 		return repository.TrackingRecord{}, corrupt("get tracking")
 	}
 	return v, nil
+}
+func (s *session) ReplaceTracking(ctx context.Context, id string, hash [32]byte, expires time.Time, expected int64) error {
+	// The caller holds the order lock; the version predicate also protects direct
+	// repository callers. A collision aborts the entire transaction, never retries.
+	result, err := s.tx.ExecContext(ctx, `UPDATE public.orders SET version=version+1 WHERE id=$1 AND version=$2`, id, expected)
+	if err != nil {
+		return dbError(ctx, "rotate tracking", err)
+	}
+	n, err := result.RowsAffected()
+	if err != nil {
+		return dbError(ctx, "rotate tracking count", err)
+	}
+	if n != 1 {
+		return stale("rotate tracking")
+	}
+	if expires.IsZero() {
+		return corrupt("rotate tracking expiry")
+	}
+	// A repeated generator output must fail instead of claiming revocation.
+	var exists bool
+	if err := s.tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM public.order_tracking_tokens WHERE token_hash=$1)`, hash[:]).Scan(&exists); err != nil {
+		return dbError(ctx, "rotate tracking collision", err)
+	}
+	if exists {
+		return stale("rotate tracking collision")
+	}
+	_, err = s.tx.ExecContext(ctx, `INSERT INTO public.order_tracking_tokens(order_id,token_hash,expires_at) VALUES($1,$2,$3) ON CONFLICT(order_id) DO UPDATE SET token_hash=EXCLUDED.token_hash,expires_at=EXCLUDED.expires_at`, id, hash[:], databaseTime(expires))
+	return dbError(ctx, "replace tracking", err)
 }
 func (s *session) LedgerTotals(ctx context.Context, from, to time.Time) (repository.LedgerTotals, error) {
 	var v repository.LedgerTotals

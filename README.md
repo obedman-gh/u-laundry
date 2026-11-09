@@ -2,13 +2,13 @@
 
 ULaundry adalah aplikasi operasional laundry di Perumahan Viola milik Obed Erwin Manambe. Stack: Go (`net/http`), PostgreSQL, HTML, CSS, dan JavaScript tanpa framework frontend besar.
 
-Status per 9 November 2026: **role dan pengelolaan staf tahap 10 selesai, belum layak produksi**. Lihat [arsitektur](docs/architecture.md), [kontrak API dan perubahan kompatibilitas](docs/api.md), [aturan bisnis](docs/business-rules.md), [database](docs/database.md), [audit baseline](docs/audit-baseline.md), [kriteria penerimaan](docs/acceptance-criteria.md), [backlog](docs/backlog-30-days.md), dan [laporan hari 10](docs/progress/day-10.md) dan [keamanan autentikasi](docs/security.md).
+Status per 9 November 2026: **customer management dan tracking privat tahap 11 selesai, belum layak produksi**. Lihat [arsitektur](docs/architecture.md), [kontrak API dan perubahan kompatibilitas](docs/api.md), [aturan bisnis](docs/business-rules.md), [database](docs/database.md), [audit baseline](docs/audit-baseline.md), [kriteria penerimaan](docs/acceptance-criteria.md), [backlog](docs/backlog-30-days.md), dan [laporan hari 11](docs/progress/day-11.md) dan [keamanan autentikasi](docs/security.md).
 
 ## Implementasi saat ini
 
 - Owner dapat mengelola staf melalui /staff.html; API/use case menegakkan matrix izin dan audit. Bootstrap akun pertama tanpa password hardcoded tersedia.
 - Login staf generik dengan bcrypt/JWT HS256, claims wajib, cookie HttpOnly, sesi PostgreSQL, CSRF, logout/revocation dan rate limit; role dimuat ulang pada use case.
-- Create customer, configure service, create order dengan perhitungan katalog server, status/version dan cancellation terkontrol, serta daftar/detail berfilter/pagination.
+- Create/edit/search customer dan riwayat order, configure service, create order dengan perhitungan katalog server, status/version dan cancellation terkontrol, serta daftar/detail berfilter/pagination.
 - Endpoint payment terpisah, payment-ledger-audit satu transaksi, replay key identik tanpa posting ulang; `Sudah Lunas` bukan status operasional.
 - Struk staf terautentikasi dan HTML escaping; printer fisik 58/80mm belum diverifikasi. Tracking publik memakai token acak dengan hash tersimpan dan projection minimal.
 - Data laporan buku kas per rentang tanggal (default hari berjalan WITA), hanya owner/admin dan diaudit.
@@ -21,7 +21,7 @@ Struktur: `cmd/server/` menyusun pool, runtime clock/ID/token, repository dan us
 
 Use case dipisah menjadi Customers/Catalog/Orders/Payments/Tracking/Reports/Auth/Health, dengan clock/ID/token generator yang dapat diganti untuk test. Payload create order menolak harga/total klien; snapshot katalog dan diskon sah dihitung domain. Kegagalan audit menyebabkan rollback perubahan pada use case, bukan keberhasilan parsial. Pilihan kebijakan domain hari 05 tetap perlu ditinjau sebelum aktivasi operasional.
 
-Migration **000004** menambah version layanan, hash token tracking dan allowed audit actions. `up` menerapkan enam versi; 000001–000003 tetap immutable. **Server sekarang memakai tabel domain, bukan pesanan/kasir/keuangan lama.** Data legacy tetap, tetapi tidak otomatis terlihat/diimpor atau dipakai login. Sebelum deployment data nyata wajib backup/restore salinan, mapping/import akun/status/uang, rekonsiliasi dan satu writer. Bootstrap owner domain aman tersedia lewat cmd/admin; utilitas setup-kasir lama tidak membuat akun domain. Jangan menganggap perubahan kode ini sudah melakukan cutover data operasional. Demo SQL tetap khusus legacy dan tidak lagi menjadi data yang dibaca server baru.
+Migration **000004** menambah version layanan, hash token tracking dan allowed audit actions. `up` menerapkan tujuh versi; 000001–000003 tetap immutable. **Server sekarang memakai tabel domain, bukan pesanan/kasir/keuangan lama.** Data legacy tetap, tetapi tidak otomatis terlihat/diimpor atau dipakai login. Sebelum deployment data nyata wajib backup/restore salinan, mapping/import akun/status/uang, rekonsiliasi dan satu writer. Bootstrap owner domain aman tersedia lewat cmd/admin; utilitas setup-kasir lama tidak membuat akun domain. Jangan menganggap perubahan kode ini sudah melakukan cutover data operasional. Demo SQL tetap khusus legacy dan tidak lagi menjadi data yang dibaca server baru.
 
 ## Prasyarat dan setup lokal
 
@@ -162,3 +162,24 @@ go test ./internal/service -run '^TestPostgresStaffAdministration$' -count=1 -ti
 ```
 
 Bukti hari 10: permission/negative paths/rollback dan stdin command lulus; 8 test JavaScript lulus; PostgreSQL 16 membuktikan bootstrap race, upgrade 5→6 dengan akun/hash existing sintetis tetap, username/role constraints, denial audit pada pool satu koneksi, version conflict, revocation dan audit rollback. Native build/vet dan cross-build command admin Linux amd64 lulus. Prompt TTY nyata Windows/Ubuntu, browser/mobile visual dan deployment produksi belum diuji; dependency ReadPassword telah ditinjau dan jalur stdin diuji tanpa credential nyata. Tidak menjalankan full suite atau bootstrap pada akun operasional.
+
+## Pelanggan dan tracking — hari 11
+
+- Customer management — buka `/customers.html` setelah login untuk nama, kontak/alamat/catatan opsional, pencarian, edit dengan version, riwayat order, struk internal dan rotasi tautan tracking. Tidak ada field identitas tambahan yang diwajibkan.
+- Privasi — `/tracking.html#TOKEN` hanya menampilkan kode/status/estimasi/pesan; token crypto/rand 256 bit di-hash SHA-256 pada DB, unik, berlaku 90 hari dan dapat diganti staf. ID order tidak menjadi credential publik. Struk tetap privat. Baca [privacy.md](docs/privacy.md) dan [API](docs/api.md).
+- Migration — jalankan prosedur migrator existing sampai 000007 pada deployment yang terkontrol; tidak ada import/merge/delete data operasional otomatis. Token existing mendapat grace 90 hari sejak migration. Writer schema 6 tidak kompatibel; rollback memakai forward fix, bukan menghapus kolom/audit/expiry.
+
+Verifikasi terarah (dari root repo, tidak menjalankan full suite):
+
+```powershell
+# Gunakan cache workspace bila cache Go profil Windows tidak dapat ditulis.
+$env:GOCACHE = 'F:\project\ulaundry\.cache\go-build'
+go test ./internal/domain ./internal/platform ./internal/service ./internal/http/... ./internal/migrate -run 'TestTracking|TestCustomer|TestCreateOrder|TestServiceFailuresAreRedactedAndReceiptIsEscaped|TestExistingRoutes|TestCatalog$' -count=1 -timeout=60s
+node --test scripts/frontend-contract.test.cjs
+# Hanya cluster test khusus; helper membuat/menghapus DB disposable.
+$env:ULAUNDRY_TEST_ADMIN_DSN = 'postgres://TEST_ADMIN@127.0.0.1:55441/postgres?sslmode=disable'
+go test ./internal/service ./internal/repository/postgres -run '^TestPostgres(CustomerPrivacy|TrackingRepositoryConstraints)$' -count=1 -timeout=90s -v
+go build ./...
+```
+
+Batas bukti: UI memakai test DOM sintetis; browser Android/printer/konfigurasi proxy produksi belum diverifikasi. Jangan mencatat path token pada proxy/Cloudflare/analytics. Lihat [laporan hari 11](docs/progress/day-11.md).

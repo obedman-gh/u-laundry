@@ -20,10 +20,13 @@ import (
 func orderView(record repository.OrderRecord) dto.OrderResponse {
 	o := record.Order
 	names := make([]string, 0, len(o.Items()))
+	items := make([]dto.OrderItemResponse, 0, len(o.Items()))
 	for _, item := range o.Items() {
 		names = append(names, item.ServiceName)
+		items = append(items, dto.OrderItemResponse{ServiceID: item.ServiceID, Name: item.ServiceName, Unit: dto.PublicUnit(string(item.Unit)), UnitPrice: int64(item.UnitPrice), Pieces: item.Quantity.Pieces, Grams: item.Quantity.Grams, LineTotal: int64(item.LineTotal)})
 	}
-	return dto.OrderResponse{ID: o.ID(), Customer: o.Customer().Name, Services: strings.Join(names, ", "), Total: int64(o.Total()), Status: string(o.Status()), PaymentStatus: string(o.PaymentStatus()), Version: record.Version, CreatedAt: o.CreatedAt(), EstimatedReadyAt: o.EstimatedReadyAt(), ReadyAt: nullableTime(o.ReadyAt())}
+	subtotal, discount := int64(o.Subtotal()), int64(o.Discount().Amount)
+	return dto.OrderResponse{ID: o.ID(), Customer: o.Customer().Name, Services: strings.Join(names, ", "), Total: int64(o.Total()), Status: string(o.Status()), PaymentStatus: string(o.PaymentStatus()), Version: record.Version, CreatedAt: o.CreatedAt(), EstimatedReadyAt: o.EstimatedReadyAt(), ReadyAt: nullableTime(o.ReadyAt()), Items: items, Subtotal: &subtotal, Discount: &discount}
 }
 func (h *Handler) GetSemuaPesanan(w http.ResponseWriter, r *http.Request) { h.list(w, r, false) }
 func (h *Handler) GetPesananByStatus(w http.ResponseWriter, r *http.Request) {
@@ -94,7 +97,7 @@ func (h *Handler) BikinPesananBaru(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Location", "/api/pesanan/"+url.PathEscape(created.Order.ID()))
-	response.JSON(w, r, http.StatusCreated, dto.CreatedOrderResponse{Order: orderView(repository.OrderRecord{Order: created.Order, Version: 1}), TrackingToken: created.TrackingToken})
+	response.JSON(w, r, http.StatusCreated, dto.CreatedOrderResponse{Order: orderView(repository.OrderRecord{Order: created.Order, Version: 1}), TrackingToken: created.TrackingToken, TrackingExpiresAt: created.TrackingExpiresAt})
 }
 func (h *Handler) UpdateStatusPesanan(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r)
@@ -155,6 +158,7 @@ func (h *Handler) RecordPayment(w http.ResponseWriter, r *http.Request) {
 }
 func (h *Handler) Tracking(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("X-Robots-Tag", "noindex, nofollow")
 	token := r.PathValue("token")
 	if !dto.TrackingToken(token) {
 		response.Fail(w, r, 404, "not_found", "Data tidak ditemukan.")
@@ -165,12 +169,13 @@ func (h *Handler) Tracking(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, err)
 		return
 	}
-	response.JSON(w, r, http.StatusOK, dto.TrackingResponse{Status: string(view.Status), EstimatedReadyAt: view.EstimatedReadyAt, ReadyAt: nullableTime(view.ReadyAt), CollectedAt: nullableTime(view.CollectedAt)})
+	response.JSON(w, r, http.StatusOK, dto.TrackingResponse{Code: view.Code, Status: string(view.Status), EstimatedReadyAt: view.EstimatedReadyAt, Message: view.Message})
 }
 
 var receipt = template.Must(template.New("receipt").Parse(`<!DOCTYPE html><html lang="id"><head><title>Struk {{.ID}}</title><style>body{font-family:monospace;width:300px;margin:0 auto;padding:10px;color:#000}.center{text-align:center}.line{border-bottom:1px dashed #000;margin:10px 0}@media print{body{width:100%;margin:0}}</style></head><body><div class="center"><h2>ULAUNDRY</h2><p>Perumahan Viola</p></div><div class="line"></div><p>ID Order: {{.ID}}<br>Nama: {{.Customer}}<br>Layanan: {{.Services}}<br>Mulai: {{.CreatedAt.Format "2006-01-02 15:04:05 -07:00"}}</p><h3>TOTAL: Rp {{.Total}}</h3><p>Status: {{.Status}}<br>Pembayaran: {{.PaymentStatus}}</p><button onclick="window.print()">Cetak struk</button></body></html>`))
 
 func (h *Handler) CetakStruk(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Referrer-Policy", "no-referrer")
 	id, ok := pathID(w, r)
 	if !ok {
 		return

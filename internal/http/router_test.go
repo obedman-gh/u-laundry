@@ -263,3 +263,29 @@ func (e *endpointRecorder) ResetStaffPassword(w http.ResponseWriter, r *http.Req
 func (e *endpointRecorder) StaffAudit(w http.ResponseWriter, r *http.Request) {
 	e.record("audit", w, r)
 }
+
+func (e *endpointRecorder) SearchCustomers(w http.ResponseWriter, r *http.Request) {
+	e.record("customers", w, r)
+}
+func (e *endpointRecorder) GetCustomer(w http.ResponseWriter, r *http.Request) {
+	e.record("customer-detail", w, r)
+}
+func (e *endpointRecorder) UpdateCustomer(w http.ResponseWriter, r *http.Request) {
+	e.record("customer-update", w, r)
+}
+func (e *endpointRecorder) CustomerOrders(w http.ResponseWriter, r *http.Request) {
+	e.record("customer-orders", w, r)
+}
+func (e *endpointRecorder) RotateTracking(w http.ResponseWriter, r *http.Request) {
+	e.record("rotate-tracking", w, r)
+}
+
+func (e *endpointRecorder) ListServices(w http.ResponseWriter, r *http.Request) {
+	e.record("catalog-list", w, r)
+}
+func (e *endpointRecorder) GetService(w http.ResponseWriter, r *http.Request) {
+	e.record("catalog-detail", w, r)
+}
+func (e *endpointRecorder) ServiceHistory(w http.ResponseWriter, r *http.Request) {
+	e.record("catalog-history", w, r)
+}

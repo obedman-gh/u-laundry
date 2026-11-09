@@ -43,7 +43,7 @@ func run(ctx context.Context) error {
 	use := handler.Dependencies{
 		Staff:     service.NewStaffManagement(uow, runtime, platform.Passwords{}),
 		Customers: service.NewCustomers(uow, runtime), Catalog: service.NewCatalog(uow, runtime), Orders: service.NewOrders(uow, runtime), Payments: service.NewPayments(uow, runtime),
-		Tracking: service.NewTracking(uow), Reports: service.NewReports(uow, runtime), Auth: service.NewAuth(uow, runtime, platform.Passwords{}, platform.JWTIssuer{Secret: settings.JWTSecret, Issuer: settings.JWTIssuer, Audience: settings.JWTAudience, Lifetime: settings.SessionLifetime}), Health: service.NewHealth(db),
+		Tracking: service.NewTracking(uow, runtime), Reports: service.NewReports(uow, runtime), Auth: service.NewAuth(uow, runtime, platform.Passwords{}, platform.JWTIssuer{Secret: settings.JWTSecret, Issuer: settings.JWTIssuer, Audience: settings.JWTAudience, Lifetime: settings.SessionLifetime}), Health: service.NewHealth(db),
 	}
 	sameSite := http.SameSiteLaxMode
 	if settings.Cookie.SameSite == "strict" {

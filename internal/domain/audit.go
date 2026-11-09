@@ -6,35 +6,36 @@ type AuditAction string
 type AuditEntity string
 
 const (
-	CustomerCreated    AuditAction = "customer_created"
-	ServiceConfigured  AuditAction = "service_configured"
-	OrderCancelled     AuditAction = "order_cancelled"
-	ReportGenerated    AuditAction = "report_generated"
-	StaffCreated       AuditAction = "staff_created"
-	StaffBootstrapped  AuditAction = "staff_bootstrapped"
-	StaffDeactivated   AuditAction = "staff_deactivated"
-	StaffActivated     AuditAction = "staff_activated"
-	StaffRoleChanged   AuditAction = "staff_role_changed"
-	StaffPasswordReset AuditAction = "staff_password_reset"
-	StaffLoggedIn      AuditAction = "staff_logged_in"
-	ReportEntity       AuditEntity = "report"
-	OrderCreated       AuditAction = "order_created"
-	OrderStatusChanged AuditAction = "order_status_changed"
-	PaymentRecorded    AuditAction = "payment_recorded"
-	DiscountApproved   AuditAction = "discount_approved"
-	CustomerUpdated    AuditAction = "customer_updated"
-	ServiceUpdated     AuditAction = "service_updated"
-	StaffUpdated       AuditAction = "staff_updated"
-	OrderEntity        AuditEntity = "order"
-	PaymentEntity      AuditEntity = "payment"
-	CustomerEntity     AuditEntity = "customer"
-	ServiceEntity      AuditEntity = "service"
-	StaffEntity        AuditEntity = "staff"
+	CustomerCreated      AuditAction = "customer_created"
+	ServiceConfigured    AuditAction = "service_configured"
+	OrderCancelled       AuditAction = "order_cancelled"
+	ReportGenerated      AuditAction = "report_generated"
+	StaffCreated         AuditAction = "staff_created"
+	StaffBootstrapped    AuditAction = "staff_bootstrapped"
+	StaffDeactivated     AuditAction = "staff_deactivated"
+	StaffActivated       AuditAction = "staff_activated"
+	StaffRoleChanged     AuditAction = "staff_role_changed"
+	StaffPasswordReset   AuditAction = "staff_password_reset"
+	StaffLoggedIn        AuditAction = "staff_logged_in"
+	ReportEntity         AuditEntity = "report"
+	OrderCreated         AuditAction = "order_created"
+	OrderTrackingRotated AuditAction = "order_tracking_rotated"
+	OrderStatusChanged   AuditAction = "order_status_changed"
+	PaymentRecorded      AuditAction = "payment_recorded"
+	DiscountApproved     AuditAction = "discount_approved"
+	CustomerUpdated      AuditAction = "customer_updated"
+	ServiceUpdated       AuditAction = "service_updated"
+	StaffUpdated         AuditAction = "staff_updated"
+	OrderEntity          AuditEntity = "order"
+	PaymentEntity        AuditEntity = "payment"
+	CustomerEntity       AuditEntity = "customer"
+	ServiceEntity        AuditEntity = "service"
+	StaffEntity          AuditEntity = "staff"
 )
 
 func (a AuditAction) entity() AuditEntity {
 	switch a {
-	case OrderCreated, OrderStatusChanged, OrderCancelled, DiscountApproved:
+	case OrderCreated, OrderStatusChanged, OrderCancelled, DiscountApproved, OrderTrackingRotated:
 		return OrderEntity
 	case PaymentRecorded:
 		return PaymentEntity

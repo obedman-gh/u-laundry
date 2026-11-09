@@ -1,6 +1,6 @@
-# Kontrak HTTP API — hari 10
+# Kontrak HTTP API — hari 11
 
-Server memakai storage domain dan autentikasi migration 000006. Ini perubahan kontrak dari handler legacy: tidak menerima total/harga/status klien saat create; data/akun pesanan-kasir-keuangan lama belum diimpor. Jangan aktifkan pada data operasional sebelum mapping, backup/restore dan rekonsiliasi; lihat [architecture.md](architecture.md).
+Server memakai storage domain dan autentikasi migration 000007. Ini perubahan kontrak dari handler legacy: tidak menerima total/harga/status klien saat create; data/akun pesanan-kasir-keuangan lama belum diimpor. Jangan aktifkan pada data operasional sebelum mapping, backup/restore dan rekonsiliasi; lihat [architecture.md](architecture.md).
 
 Semua body JSON memakai satu Content-Type application/json (charset UTF-8 opsional), maksimal 64 KiB termasuk whitespace, satu objek UTF-8 dan tanpa field asing. Content-Encoding selain identity atau header encoding berulang ditolak. Field duplikat, termasuk escape/alias kapitalisasi dan objek item bersarang, ditolak sebelum use case dipanggil. Rupiah dan gram/jumlah berupa integer. Cookie sesi HttpOnly diperlukan selain login/health/tracking. Bearer/localStorage tidak diterima lagi. JWT memerlukan HS256, issuer/audience/iat/exp/sub/username/role/jti dan registrasi sesi PostgreSQL; role/active tetap dimuat ulang setiap use case. Mutasi privat memerlukan X-CSRF-Token dan Origin persis PUBLIC_BASE_URL; login memerlukan Origin tersebut tanpa sesi awal. Owner pertama dibuat dengan command bootstrap-owner pada tabel staff kosong; staf berikutnya dikelola owner melalui API/UI. Utilitas setup-kasir lama hanya menyentuh tabel legacy dan bukan jalur akun domain.
 
@@ -10,10 +10,14 @@ Semua body JSON memakai satu Content-Type application/json (charset UTF-8 opsion
 | GET /api/session | Sesi aktif; user_id/username/role/csrf_token/expires_at, no-store |
 | POST /api/logout | Cookie + X-CSRF-Token/Origin; revoke persisten dan hapus cookie; cookie lama 401 |
 | GET /api/health | Ping database; 200 sehat, 503 health_unavailable saat gagal; bukan liveness/readiness terpisah |
-| POST /api/customers | Staf aktif; name/contact/notes → customer_id/name |
+| POST /api/customers | Staf aktif; name wajib, contact/address/notes opsional -> customer_id/name |
+| GET /api/customers?q=Nama&limit=20&offset=0 | Staf aktif; cari nama/kontak (q opsional), hanya customer_id/name/contact |
+| GET /api/customers/{id} | Staf aktif; profil termasuk address/notes/version |
+| PUT /api/customers/{id} | Staf aktif; name/contact/address/notes + version positif; audit atomik |
+| GET /api/customers/{id}/orders | Staf aktif; riwayat order customer, limit/offset; tanpa token/ledger |
 | POST /api/services | Owner/admin; name/unit/unit_price/turnaround_minutes/active → service_id/version |
 | PUT /api/services/{id} | Owner/admin; field konfigurasi + expected `version`; snapshot order lama tetap |
-| POST /api/pesanan | CustomerID/item/discount/notes/estimasi → order dan tracking_token sekali |
+| POST /api/pesanan | CustomerID/item/discount/notes/estimasi → order, tracking_token sekali, tracking_expires_at |
 | GET /api/pesanan | Staf; limit/offset/status/customer_id, array ringkasan kompatibel field daftar lama |
 | GET /api/pesanan/status?q=processing | Alias deprecated; q wajib status domain, pagination sama; penerus GET /api/pesanan?status=processing |
 | GET /api/pesanan/{id} | Staf; satu objek detail termasuk version; **tidak publik lagi** |
@@ -21,7 +25,8 @@ Semua body JSON memakai satu Content-Type application/json (charset UTF-8 opsion
 | PUT /api/pesanan/{id} | Staf; status dan expected version; bukan mencatat pembayaran |
 | POST /api/pesanan/{id}/cancel | Owner/admin; version/reason; belum ada pembayaran |
 | POST /api/pesanan/{id}/pembayaran | Staf; amount/method + header Idempotency-Key wajib |
-| GET /api/tracking/{token} | Publik capability; hanya status/estimated_ready_at/ready_at/collected_at |
+| GET /api/tracking/{token} | Publik capability belum expired; tepat tracking_code/status/estimated_ready_at/message |
+| POST /api/pesanan/{id}/tracking | Staf aktif + CSRF; {version} -> tracking_token/tracking_expires_at/version; mencabut token lama |
 | GET /api/laporan/neraca | Owner/admin; from/to RFC3339 opsional berpasangan, default hari berjalan WITA; cash inflow/outflow/balance + report_id |
 
 Contoh create order (ID layanan/customer dari respons create/configure):
@@ -75,7 +80,7 @@ Message domain/repository/driver, stack trace, nilai panic, password/hash dan in
 
 - Query daftar hanya limit/offset/status/customer_id; alias lama memakai q menggantikan status. Query unknown, duplikat, kosong, invalid escape/format ditolak. Limit 1–100 (default 20); offset integer nonnegatif yang dapat direpresentasikan int platform. Overflow ditolak, bukan di-clamp. Laporan hanya from/to RFC3339 berpasangan dan berurutan setelah normalisasi UTC/mikrodetik.
 - ID path dan Idempotency-Key: 1–100 karakter ASCII huruf/angka/titik/underscore/hyphen. Payment memerlukan tepat satu header Idempotency-Key. Create payment 201; replay yang diverifikasi use case 200 dengan replayed=true. Ini bukti kontrak HTTP, bukan pengujian ulang atomicity/concurrency storage.
-- Tracking token harus Base64 URL tanpa padding canonical dari 32 byte (43 karakter); token salah berbentuk 404 yang sama. Token tidak dipantulkan. Referrer-Policy no-referrer pada respons tracking.
+- Tracking token harus Base64 URL tanpa padding canonical dari 32 byte (43 karakter); token salah berbentuk 404 yang sama. Raw token tidak dipantulkan oleh lookup publik; tracking_code adalah referensi tampilan 12 digit hex dari hash, bukan credential. Token berlaku 90 hari; malformed/unknown/expired/rotated mendapat 404 not_found dengan pesan yang sama. Referrer-Policy no-referrer dan X-Robots-Tag noindex, nofollow pada respons tracking.
 - GET tetap mendukung HEAD dengan status/header setara tanpa body; auth tetap berlaku. Method salah pada path dikenal memberi 405 dengan Allow. URL /api dan /api/* tidak pernah dilayani FileServer, termasuk jika file dengan nama itu ada.
 - Alias GET /api/pesanan/status dipertahankan dengan header Deprecation bertanggal 7 November 2026 UTC dan Link rel=successor-version ke /api/pesanan. Tidak ada janji tanggal penghapusan.
 - Respons JSON dan struk memakai Cache-Control no-store dan X-Content-Type-Options nosniff. JSON di-encode sebelum header sukses dikirim; HEAD mempunyai Content-Length representasi tanpa body. Aset statis mempertahankan handler dan tema lama.
@@ -141,3 +146,18 @@ Penolakan authorization pada use case menghasilkan auth_events kind=access_denie
 UI owner: `/staff.html`, dengan navigasi dari antrean, daftar berpaginasi, create, pilih akun, status aktif, role dan reset password. Password input bertipe password/autocomplete=new-password, dikonfirmasi dan dibersihkan; data staf dirender textContent. Konflik mengosongkan pilihan dan menyediakan Muat ulang. Tidak ada penulisan offline atau penyimpanan credential di localStorage.
 
 Bootstrap, command test dan batas deployment dijelaskan di README bagian Akun awal. Lihat [laporan hari 10](progress/day-10.md).
+
+## Hari 11 — Tindakan — Hasil
+
+- Pelanggan praktis — cukup `{"name":"Pelanggan"}` untuk create; contact/address/notes opsional. Nama maksimal 100, alamat 500, catatan 1.000 karakter. Kontak mengikuti normalisasi nomor domain; string kosong menghapus nilai opsional saat PUT. PUT mengganti seluruh field profil dan membutuhkan version dari GET detail; field opsional yang tidak dikirim menjadi kosong. Version stale 409, ID tidak ditemukan 404, invalid input 400. Version create hanya nol/tidak dikirim. Tidak ada endpoint hapus atau merge.
+- Pencarian minimum — GET /api/customers menerima hanya q/limit/offset; q tidak dikirim berarti daftar, q kosong/berulang ditolak. Query maksimum 100 karakter; nama case-insensitive, nomor lokal lengkap dinormalisasi +62, pencarian partial diperbolehkan, `%`/`_` literal. Respons list tidak memuat alamat/catatan; GET detail membukanya hanya untuk staf aktif. Kontak kosong dihilangkan dari JSON.
+- Riwayat — GET /api/customers/{id}/orders hanya menerima limit/offset dan mengembalikan array ringkasan order internal customer tersebut; customer tidak ditemukan 404. Daftar kosong `[]`. Edit customer tidak menulis ulang snapshot order/struk sebelumnya. Ledger dan capability tidak masuk riwayat.
+- Token — create order mengembalikan tracking_expires_at; POST /api/pesanan/{id}/tracking hanya menerima `{"version":1}` dengan cookie/Origin/CSRF. Respons `{"tracking_token":"TOKEN_BARU","tracking_expires_at":"RFC3339","version":2}`. Raw token hanya diberikan sekali; refresh detail tidak dapat mengambilnya. Rotasi memakai lock, menaikkan version order dan audit tanpa token; stale 409 dan kegagalan audit rollback. Collision ditolak, tidak melakukan retry buta. Jika respons hilang setelah commit, muat version terkini sebelum rotasi ulang.
+- Tracking publik — respons tepat seperti contoh berikut; status received/processing/ready/collected/cancelled, message hanya dari mapping status terkontrol. Tidak ada fallback dari ID order. Kode tampilan tidak mempunyai endpoint lookup dan bukan pengganti token.
+
+```json
+{"tracking_code":"abc123def456","status":"processing","estimated_ready_at":"2026-11-10T00:00:00Z","message":"Pesanan sedang diproses."}
+```
+
+- UI — /customers.html menyediakan create/edit/search/history, struk internal dan tautan tracking baru; /tracking.html#TOKEN menampilkan projection publik dan membersihkan fragment. Struk publik tidak ditambahkan. Semua respons data no-store; token tidak disimpan di browser storage. Kebijakan expiry/rotation, batas log proxy dan rollback migration ada di [privacy.md](privacy.md).
+- Verifikasi terarah — command/bukti di [laporan hari 11](progress/day-11.md); tidak membutuhkan full suite. Penambahan migration 000007 membutuhkan deployment binary yang memasok expires_at; jangan downgrade ke penulis schema 6.

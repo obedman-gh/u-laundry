@@ -13,11 +13,18 @@ import (
 
 type CustomerUseCase interface {
 	Create(context.Context, string, service.CustomerInput) (domain.Customer, error)
+	Search(context.Context, string, string, repository.Page) ([]domain.Customer, error)
+	Get(context.Context, string, string) (repository.CustomerRecord, error)
+	Update(context.Context, string, string, service.CustomerInput, int64) (repository.CustomerRecord, error)
 }
 type CatalogUseCase interface {
 	Configure(context.Context, string, service.ServiceInput) (repository.ServiceRecord, error)
+	List(context.Context, string, repository.ServiceFilter) ([]repository.ServiceRecord, error)
+	Get(context.Context, string, string) (repository.ServiceRecord, error)
+	History(context.Context, string, string, repository.Page) ([]repository.ServiceRevision, error)
 }
 type OrderUseCase interface {
+	RotateTracking(context.Context, string, string, int64) (service.RotatedTracking, error)
 	Create(context.Context, string, service.OrderInput) (service.CreatedOrder, error)
 	ChangeStatus(context.Context, string, string, domain.OrderStatus, int64) (repository.OrderRecord, error)
 	Cancel(context.Context, string, string, int64, string) (repository.OrderRecord, error)

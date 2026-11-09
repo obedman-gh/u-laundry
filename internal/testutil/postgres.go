@@ -17,6 +17,13 @@ import (
 )
 
 func Postgres(t *testing.T) *sql.DB {
+	return postgres(t, "")
+}
+
+// PostgresDemo also creates a disposable database, with the seed's guarded suffix.
+func PostgresDemo(t *testing.T) *sql.DB { return postgres(t, "_demo") }
+
+func postgres(t *testing.T, suffix string) *sql.DB {
 	t.Helper()
 	dsn := os.Getenv("ULAUNDRY_TEST_ADMIN_DSN")
 	if dsn == "" {
@@ -52,7 +59,7 @@ func Postgres(t *testing.T) *sql.DB {
 	if _, err := rand.Read(random); err != nil {
 		t.Fatal(err)
 	}
-	name := fmt.Sprintf("ulaundry_repository_test_%x", random)
+	name := fmt.Sprintf("ulaundry_repository_test_%x%s", random, suffix)
 	if _, err := admin.ExecContext(ctx, `CREATE DATABASE `+pq.QuoteIdentifier(name)+` TEMPLATE template0`); err != nil {
 		t.Fatal(err)
 	}

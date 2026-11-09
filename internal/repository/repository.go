@@ -50,34 +50,53 @@ type PaymentResult struct {
 
 type CustomerLookup interface {
 	GetCustomer(context.Context, string) (domain.Customer, error)
+	GetCustomerRecord(context.Context, string) (CustomerRecord, error)
 	SearchCustomers(context.Context, string, Page) ([]domain.Customer, error)
 }
 type CustomerRegistration interface {
 	AddCustomer(context.Context, domain.Customer) error
+	LockCustomer(context.Context, string) (CustomerRecord, error)
+	UpdateCustomer(context.Context, domain.Customer, int64) error
+}
+type CustomerRecord struct {
+	Customer domain.Customer
+	Version  int64
 }
 type ServiceCatalog interface {
 	GetService(context.Context, string) (domain.Service, error)
+	GetServiceRecord(context.Context, string) (ServiceRecord, error)
+	ListServices(context.Context, ServiceFilter) ([]ServiceRecord, error)
+	ServiceHistory(context.Context, string, Page) ([]ServiceRevision, error)
 	ListActiveServices(context.Context, Page) ([]domain.Service, error)
 }
 type ServiceRegistration interface {
 	AddService(context.Context, domain.Service) error
 	LockService(context.Context, string) (ServiceRecord, error)
 	UpdateService(context.Context, domain.Service, int64) error
+	AppendServiceRevision(context.Context, ServiceRevision) error
+}
+type ServiceFilter struct {
+	Page            Page
+	IncludeInactive bool
+}
+type ServiceRevision struct {
+	ServiceRecord
+	ActorID, Source string
 }
 type ServiceRecord struct {
 	Service domain.Service
 	Version int64
 }
 type TrackingRecord struct {
-	Status               domain.OrderStatus
-	EstimatedReadyAt     time.Time
-	ReadyAt, CollectedAt time.Time
+	Status           domain.OrderStatus
+	EstimatedReadyAt time.Time
 }
 type TrackingLookup interface {
-	GetTracking(context.Context, [32]byte) (TrackingRecord, error)
+	GetTracking(context.Context, [32]byte, time.Time) (TrackingRecord, error)
 }
 type TrackingRegistration interface {
-	AddTracking(context.Context, string, [32]byte) error
+	AddTracking(context.Context, string, [32]byte, time.Time) error
+	ReplaceTracking(context.Context, string, [32]byte, time.Time, int64) error
 }
 type LedgerTotals struct{ Inflow, Outflow domain.Money }
 type ReportQueries interface {

@@ -68,29 +68,57 @@ type CustomerRequest struct {
 	Name    string `json:"name"`
 	Contact string `json:"contact"`
 	Notes   string `json:"notes"`
+	Address string `json:"address"`
+	Version int64  `json:"version"`
 }
 
 func (v CustomerRequest) Validate() error {
-	if !text(v.Name, 100, true, false) || len(v.Contact) > 64 || !text(v.Notes, 1000, false, true) {
+	if !text(v.Name, 100, true, false) || len(v.Contact) > 64 || !text(v.Address, 500, false, true) || !text(v.Notes, 1000, false, true) || v.Version < 0 {
 		return bad("Nama, kontak atau catatan pelanggan tidak valid.")
 	}
 	return nil
 }
 
+type TrackingRotationRequest struct {
+	Version int64 `json:"version"`
+}
+
+func (v TrackingRotationRequest) Validate() error {
+	if v.Version < 1 {
+		return bad("Versi positif wajib diisi.")
+	}
+	return nil
+}
+
 type ServiceRequest struct {
-	Name      string `json:"name"`
-	Unit      string `json:"unit"`
-	UnitPrice int64  `json:"unit_price"`
-	Minutes   int64  `json:"turnaround_minutes"`
-	Active    *bool  `json:"active"`
-	Version   int64  `json:"version"`
+	Name         string `json:"name"`
+	Unit         string `json:"unit"`
+	UnitPrice    int64  `json:"unit_price"`
+	Minutes      int64  `json:"turnaround_minutes"`
+	Active       *bool  `json:"active"`
+	Version      int64  `json:"version"`
+	DisplayOrder int    `json:"display_order"`
 }
 
 func (v ServiceRequest) Validate() error {
-	if !text(v.Name, 100, true, false) || (v.Unit != "kg" && v.Unit != "piece") || v.UnitPrice < 0 || v.Minutes <= 0 || v.Minutes > math.MaxInt64/int64(time.Minute) || v.Active == nil || v.Version < 0 {
+	if !text(v.Name, 100, true, false) || (v.Unit != "kg" && v.Unit != "item" && v.Unit != "piece") || v.UnitPrice < 0 || v.Minutes <= 0 || v.Minutes > math.MaxInt64/int64(time.Minute) || v.Active == nil || v.Version < 0 || v.DisplayOrder < 0 || v.DisplayOrder > 1000000 {
 		return bad("Konfigurasi layanan wajib lengkap dan valid.")
 	}
 	return nil
+}
+
+// Keep persisted piece snapshots compatible while presenting the business unit item.
+func StoredUnit(value string) string {
+	if value == "item" {
+		return "piece"
+	}
+	return value
+}
+func PublicUnit(value string) string {
+	if value == "piece" {
+		return "item"
+	}
+	return value
 }
 
 type ItemRequest struct {

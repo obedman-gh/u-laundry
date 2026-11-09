@@ -2,9 +2,8 @@ package service
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
 	"errors"
+	"sort"
 	"time"
 	"ulaundry/internal/domain"
 	"ulaundry/internal/repository"
@@ -25,16 +24,13 @@ type OrderInput struct {
 	EstimatedReadyAt      time.Time
 }
 type CreatedOrder struct {
-	Order         domain.Order
-	TrackingToken string
+	Order             domain.Order
+	TrackingToken     string
+	TrackingExpiresAt time.Time
 }
 
 func tokenHash(token string) ([32]byte, bool) {
-	raw, err := base64.RawURLEncoding.DecodeString(token)
-	if err != nil || len(raw) != 32 || base64.RawURLEncoding.EncodeToString(raw) != token {
-		return [32]byte{}, false
-	}
-	return sha256.Sum256([]byte(token)), true
+	return domain.TrackingHash(token)
 }
 func (s *Orders) Create(ctx context.Context, actor string, in OrderInput) (CreatedOrder, error) {
 	var result CreatedOrder
@@ -57,16 +53,22 @@ func (s *Orders) Create(ctx context.Context, actor string, in OrderInput) (Creat
 		}
 		catalog := make([]domain.Service, 0, len(in.Items))
 		seen := map[string]bool{}
+		ids := make([]string, 0, len(in.Items))
 		for _, item := range in.Items {
 			if seen[item.ServiceID] {
 				continue
 			}
 			seen[item.ServiceID] = true
-			v, err := tx.GetService(ctx, item.ServiceID)
+			ids = append(ids, item.ServiceID)
+		}
+		// Stable lock ordering serializes price edits against accepted snapshots.
+		sort.Strings(ids)
+		for _, id := range ids {
+			r, err := tx.LockService(ctx, id)
 			if err != nil {
 				return err
 			}
-			catalog = append(catalog, v)
+			catalog = append(catalog, r.Service)
 		}
 		at, err := s.runtime.now()
 		if err != nil {
@@ -98,7 +100,7 @@ func (s *Orders) Create(ctx context.Context, actor string, in OrderInput) (Creat
 		if err := tx.CreateOrder(ctx, order); err != nil {
 			return err
 		}
-		if err := tx.AddTracking(ctx, order.ID(), hash); err != nil {
+		if err := tx.AddTracking(ctx, order.ID(), hash, at.Add(domain.TrackingLifetime)); err != nil {
 			return err
 		}
 		if err := audit(ctx, tx, s.runtime, a.ID, domain.OrderCreated, domain.OrderEntity, order.ID(), at); err != nil {
@@ -109,7 +111,7 @@ func (s *Orders) Create(ctx context.Context, actor string, in OrderInput) (Creat
 				return err
 			}
 		}
-		result = CreatedOrder{Order: order, TrackingToken: token}
+		result = CreatedOrder{Order: order, TrackingToken: token, TrackingExpiresAt: at.Add(domain.TrackingLifetime)}
 		return nil
 	})
 	if err != nil {

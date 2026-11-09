@@ -8,16 +8,19 @@ import (
 	"ulaundry/internal/repository"
 )
 
-type Tracking struct{ uow repository.UnitOfWork }
+type Tracking struct {
+	uow     repository.UnitOfWork
+	runtime Runtime
+}
 
-func NewTracking(uow repository.UnitOfWork) *Tracking { return &Tracking{uow} }
+func NewTracking(uow repository.UnitOfWork, rt Runtime) *Tracking { return &Tracking{uow, rt} }
 
 // TrackingView is an explicit privacy projection: no name, contact, order ID,
 // notes, services, price, payment details, actor, or tracking token.
 type TrackingView struct {
-	Status               domain.OrderStatus
-	EstimatedReadyAt     time.Time
-	ReadyAt, CollectedAt time.Time
+	Status           domain.OrderStatus
+	EstimatedReadyAt time.Time
+	Code, Message    string
 }
 
 func (s *Tracking) Get(ctx context.Context, token string) (TrackingView, error) {
@@ -27,12 +30,16 @@ func (s *Tracking) Get(ctx context.Context, token string) (TrackingView, error) 
 		return TrackingView{}, missing
 	}
 	var result TrackingView
-	err := s.uow.View(ctx, func(r repository.Readers) error {
-		v, err := r.GetTracking(ctx, hash)
+	at, err := s.runtime.now()
+	if err != nil {
+		return result, err
+	}
+	err = s.uow.View(ctx, func(r repository.Readers) error {
+		v, err := r.GetTracking(ctx, hash, at)
 		if err != nil {
 			return err
 		}
-		result = TrackingView{v.Status, v.EstimatedReadyAt, v.ReadyAt, v.CollectedAt}
+		result = TrackingView{Status: v.Status, EstimatedReadyAt: v.EstimatedReadyAt, Code: domain.TrackingCode(hash), Message: domain.TrackingMessage(v.Status)}
 		return nil
 	})
 	if errors.Is(err, repository.ErrNotFound) {

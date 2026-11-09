@@ -19,18 +19,20 @@ var fixed = time.Date(2026, 11, 7, 8, 0, 0, 0, time.UTC)
 var failure = errors.New("synthetic dependency failure")
 
 type fakeState struct {
-	staff     map[string]domain.Staff
-	customers map[string]domain.Customer
-	services  map[string]repository.ServiceRecord
-	orders    map[string]repository.OrderRecord
-	payments  map[string]domain.Payment
-	ledger    map[string]domain.LedgerEntry
-	tracking  map[[32]byte]string
-	audits    []domain.AuditEvent
-	totals    repository.LedgerTotals
-	period    ReportPeriod
-	filter    repository.OrderFilter
-	list      []repository.OrderSummary
+	staff            map[string]domain.Staff
+	customers        map[string]domain.Customer
+	customerVersions map[string]int64
+	services         map[string]repository.ServiceRecord
+	orders           map[string]repository.OrderRecord
+	payments         map[string]domain.Payment
+	ledger           map[string]domain.LedgerEntry
+	tracking         map[[32]byte]string
+	audits           []domain.AuditEvent
+	revisions        []repository.ServiceRevision
+	totals           repository.LedgerTotals
+	period           ReportPeriod
+	filter           repository.OrderFilter
+	list             []repository.OrderSummary
 }
 
 func copyMap[K comparable, V any](source map[K]V) map[K]V {
@@ -44,12 +46,14 @@ func (s *fakeState) clone() *fakeState {
 	c := *s
 	c.staff = copyMap(s.staff)
 	c.customers = copyMap(s.customers)
+	c.customerVersions = copyMap(s.customerVersions)
 	c.services = copyMap(s.services)
 	c.orders = copyMap(s.orders)
 	c.payments = copyMap(s.payments)
 	c.ledger = copyMap(s.ledger)
 	c.tracking = copyMap(s.tracking)
 	c.audits = append([]domain.AuditEvent(nil), s.audits...)
+	c.revisions = append([]repository.ServiceRevision(nil), s.revisions...)
 	return &c
 }
 
@@ -172,7 +176,7 @@ func (t *fakeTx) CreateOrder(_ context.Context, v domain.Order) error {
 	t.state.orders[v.ID()] = repository.OrderRecord{Order: v, Version: 1}
 	return nil
 }
-func (t *fakeTx) AddTracking(_ context.Context, id string, hash [32]byte) error {
+func (t *fakeTx) AddTracking(_ context.Context, id string, hash [32]byte, expires time.Time) error {
 	if err := t.call("tracking"); err != nil {
 		return err
 	}
@@ -240,7 +244,7 @@ func (t *fakeTx) RecordPayment(_ context.Context, p domain.Payment, ledgerID str
 	t.state.ledger[ledgerID] = ledger
 	return repository.PaymentResult{Payment: p}, nil
 }
-func (t *fakeTx) GetTracking(_ context.Context, hash [32]byte) (repository.TrackingRecord, error) {
+func (t *fakeTx) GetTracking(_ context.Context, hash [32]byte, at time.Time) (repository.TrackingRecord, error) {
 	if err := t.call("get_tracking"); err != nil {
 		return repository.TrackingRecord{}, err
 	}
@@ -249,7 +253,7 @@ func (t *fakeTx) GetTracking(_ context.Context, hash [32]byte) (repository.Track
 		return repository.TrackingRecord{}, missing()
 	}
 	o := t.state.orders[id].Order
-	return repository.TrackingRecord{Status: o.Status(), EstimatedReadyAt: o.EstimatedReadyAt(), ReadyAt: o.ReadyAt(), CollectedAt: o.CollectedAt()}, nil
+	return repository.TrackingRecord{Status: o.Status(), EstimatedReadyAt: o.EstimatedReadyAt()}, nil
 }
 func (t *fakeTx) LedgerTotals(_ context.Context, from, to time.Time) (repository.LedgerTotals, error) {
 	if err := t.call("report"); err != nil {
@@ -321,7 +325,7 @@ func TestCreateOrderAuthoritativeCalculationAndAudit(t *testing.T) {
 	if !ok || u.state.tracking[hash] != result.Order.ID() {
 		t.Fatal("tracking not stored atomically")
 	}
-	view, err := NewTracking(u).Get(context.Background(), result.TrackingToken)
+	view, err := NewTracking(u, Runtime{Clock: ClockFunc(func() time.Time { return fixed })}).Get(context.Background(), result.TrackingToken)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,7 +341,7 @@ func TestCreateOrderAuthoritativeCalculationAndAudit(t *testing.T) {
 }
 
 func TestOrderFailurePropagationAndRollbackIntent(t *testing.T) {
-	for _, op := range []string{"staff", "customer", "service", "create_order", "tracking", "audit", "commit"} {
+	for _, op := range []string{"staff", "customer", "lock_service", "create_order", "tracking", "audit", "commit"} {
 		t.Run(op, func(t *testing.T) {
 			u, rt := fixture(t, domain.Owner)
 			u.failAt = op
@@ -564,13 +568,13 @@ func TestPaymentBusinessGuardsRunBeforePosting(t *testing.T) {
 func TestTrackingReportAndReadAuthorization(t *testing.T) {
 	ctx := context.Background()
 	u, rt := fixture(t, domain.Owner)
-	_, err := NewTracking(u).Get(ctx, "guessable-order-id")
+	_, err := NewTracking(u, Runtime{Clock: ClockFunc(func() time.Time { return fixed })}).Get(ctx, "guessable-order-id")
 	requireDomain(t, err, domain.NotFound, "tracking_not_found")
 	if u.views != 0 {
 		t.Fatal("malformed tracking queried storage")
 	}
 	token, _ := rt.Tokens.New()
-	_, err = NewTracking(u).Get(ctx, token)
+	_, err = NewTracking(u, Runtime{Clock: ClockFunc(func() time.Time { return fixed })}).Get(ctx, token)
 	requireDomain(t, err, domain.NotFound, "tracking_not_found")
 	u.state.totals = repository.LedgerTotals{Inflow: 100000, Outflow: 45000}
 	report, err := NewReports(u, rt).Generate(ctx, "actor-1", ReportPeriod{})
