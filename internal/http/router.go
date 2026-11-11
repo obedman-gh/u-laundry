@@ -11,6 +11,7 @@ import (
 
 // Endpoints allows routing to be checked independently of SQL and bootstrap.
 type Endpoints interface {
+	OrderHistory(http.ResponseWriter,*http.Request)
 	ListServices(http.ResponseWriter, *http.Request)
 	GetService(http.ResponseWriter, *http.Request)
 	ServiceHistory(http.ResponseWriter, *http.Request)
@@ -83,6 +84,7 @@ func NewRouter(h Endpoints, m *middleware.Middleware, assets http.FileSystem) ht
 	register("/api/services", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.ListServices), "POST": m.ValidasiJWT(h.ConfigureService)})
 	register("/api/services/{id}", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.GetService), "PUT": m.ValidasiJWT(h.ConfigureService)})
 	register("/api/services/{id}/history", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.ServiceHistory)})
+	register("/api/pesanan/{id}/history", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.OrderHistory)})
 	register("/api/staff", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.ListStaff), "POST": m.ValidasiJWT(h.CreateStaff)})
 	register("/api/staff/{id}/active", map[string]http.HandlerFunc{"PUT": m.ValidasiJWT(h.ChangeStaffActive)})
 	register("/api/staff/{id}/role", map[string]http.HandlerFunc{"PUT": m.ValidasiJWT(h.ChangeStaffRole)})

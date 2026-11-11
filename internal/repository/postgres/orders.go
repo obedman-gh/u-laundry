@@ -9,7 +9,7 @@ import (
 	"ulaundry/internal/repository"
 )
 
-const orderColumns = `id,customer_id,customer_name,customer_contact,customer_notes,customer_created_at,customer_updated_at,created_by,item_count,subtotal,discount,discount_reason,discount_approved_by,total,notes,status,created_at,updated_at,estimated_ready_at,ready_at,collected_at,cancelled_at,cancellation_reason,version`
+const orderColumns = `id,customer_id,customer_name,customer_contact,customer_notes,customer_created_at,customer_updated_at,created_by,item_count,subtotal,discount,discount_reason,discount_approved_by,total,notes,status,created_at,updated_at,estimated_ready_at,ready_at,collected_at,cancelled_at,cancellation_reason,version,processing_at`
 
 func optionalTime(at sql.NullTime) any {
 	if at.Valid {
@@ -42,14 +42,15 @@ func (s *session) loadOrder(ctx context.Context, id string, lock bool) (reposito
 	var version int64
 	var itemCount int
 	var approved sql.NullString
-	var ready, collected, cancelled sql.NullTime
+	var ready, collected, cancelled, processing sql.NullTime
 	err := s.tx.QueryRowContext(ctx, query, id).Scan(&state.ID, &state.Customer.ID, &state.Customer.Name, &state.Customer.Contact, &state.Customer.Notes, &state.Customer.CreatedAt, &state.Customer.UpdatedAt, &state.CreatedBy, &itemCount,
-		&state.Subtotal, &state.Discount.Amount, &state.Discount.Reason, &approved, &state.Total, &state.Notes, &state.Status, &state.CreatedAt, &state.UpdatedAt, &state.EstimatedReadyAt, &ready, &collected, &cancelled, &state.CancellationReason, &version)
+		&state.Subtotal, &state.Discount.Amount, &state.Discount.Reason, &approved, &state.Total, &state.Notes, &state.Status, &state.CreatedAt, &state.UpdatedAt, &state.EstimatedReadyAt, &ready, &collected, &cancelled, &state.CancellationReason, &version, &processing)
 	if err != nil {
 		return repository.OrderRecord{}, dbError(ctx, "get order", err)
 	}
 	state.Discount.ApprovedBy = approved.String
 	state.ReadyAt, state.CollectedAt, state.CancelledAt = ready.Time, collected.Time, cancelled.Time
+	state.ProcessingAt = processing.Time
 	state.Items, err = queryAll(ctx, s.tx, "read order items", `SELECT line_no,service_id,service_name,unit,unit_price,pieces,grams,line_total FROM public.order_items WHERE order_id=$1 ORDER BY line_no`, func(row *sql.Rows) (domain.OrderItem, error) {
 		var item domain.OrderItem
 		var line int
@@ -90,9 +91,9 @@ func (s *session) CreateOrder(ctx context.Context, o domain.Order) error {
 		return &domain.Error{Kind: domain.Validation, Code: "order_not_new", Field: "order", Message: "Pembuatan hanya untuk pesanan baru tanpa pembayaran."}
 	}
 	ready, collected, cancelled := nullTime(state)
-	_, err := s.tx.ExecContext(ctx, `INSERT INTO public.orders (`+orderColumns+`) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)`,
+	_, err := s.tx.ExecContext(ctx, `INSERT INTO public.orders (`+orderColumns+`) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25)`,
 		state.ID, state.Customer.ID, state.Customer.Name, state.Customer.Contact, state.Customer.Notes, state.Customer.CreatedAt, state.Customer.UpdatedAt, state.CreatedBy, len(state.Items),
-		state.Subtotal, state.Discount.Amount, state.Discount.Reason, nullString(state.Discount.ApprovedBy), state.Total, state.Notes, state.Status, state.CreatedAt, state.UpdatedAt, state.EstimatedReadyAt, optionalTime(ready), optionalTime(collected), optionalTime(cancelled), state.CancellationReason, 1)
+		state.Subtotal, state.Discount.Amount, state.Discount.Reason, nullString(state.Discount.ApprovedBy), state.Total, state.Notes, state.Status, state.CreatedAt, state.UpdatedAt, state.EstimatedReadyAt, optionalTime(ready), optionalTime(collected), optionalTime(cancelled), state.CancellationReason, 1, nil)
 	if err != nil {
 		return dbError(ctx, "create order", err)
 	}
@@ -142,8 +143,8 @@ func (s *session) SaveOrderProgress(ctx context.Context, o domain.Order, expecte
 	}
 	state := stored.Order.Snapshot()
 	ready, collected, cancelled := nullTime(state)
-	result, err := s.tx.ExecContext(ctx, `UPDATE public.orders SET status=$1,updated_at=$2,ready_at=$3,collected_at=$4,cancelled_at=$5,cancellation_reason=$6,version=version+1 WHERE id=$7 AND version=$8`,
-		state.Status, state.UpdatedAt, optionalTime(ready), optionalTime(collected), optionalTime(cancelled), state.CancellationReason, state.ID, expectedVersion)
+	result, err := s.tx.ExecContext(ctx, `UPDATE public.orders SET status=$1,updated_at=$2,ready_at=$3,collected_at=$4,cancelled_at=$5,cancellation_reason=$6,version=version+1,processing_at=$9 WHERE id=$7 AND version=$8`,
+		state.Status, state.UpdatedAt, optionalTime(ready), optionalTime(collected), optionalTime(cancelled), state.CancellationReason, state.ID, expectedVersion, optionalTime(sql.NullTime{Time: state.ProcessingAt, Valid: !state.ProcessingAt.IsZero()}))
 	if err != nil {
 		return dbError(ctx, "save order progress", err)
 	}

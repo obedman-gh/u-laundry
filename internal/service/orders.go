@@ -17,6 +17,7 @@ type Orders struct {
 func NewOrders(uow repository.UnitOfWork, rt Runtime) *Orders { return &Orders{uow, rt} }
 
 type OrderInput struct {
+	IdempotencyKey        string `json:"-"`
 	CustomerID            string
 	Items                 []domain.ItemRequest
 	Discount              domain.Money
@@ -27,14 +28,23 @@ type CreatedOrder struct {
 	Order             domain.Order
 	TrackingToken     string
 	TrackingExpiresAt time.Time
+	Version           int64
+	Replayed          bool
 }
 
 func tokenHash(token string) ([32]byte, bool) {
 	return domain.TrackingHash(token)
 }
 func (s *Orders) Create(ctx context.Context, actor string, in OrderInput) (CreatedOrder, error) {
+	if !in.EstimatedReadyAt.IsZero() {
+		in.EstimatedReadyAt = in.EstimatedReadyAt.UTC().Truncate(time.Microsecond)
+	}
+	hash, err := commandFingerprint(in)
+	if err != nil {
+		return CreatedOrder{}, err
+	}
 	var result CreatedOrder
-	err := s.uow.WithinTransaction(ctx, func(tx repository.Tx) error {
+	err = s.uow.WithinTransaction(ctx, func(tx repository.Tx) error {
 		a, err := authorize(ctx, tx, actor, CreateOrder)
 		if err != nil {
 			return err
@@ -46,6 +56,18 @@ func (s *Orders) Create(ctx context.Context, actor string, in OrderInput) (Creat
 		}
 		if len(in.Items) == 0 || len(in.Items) > 100 {
 			return invalid("items", "Pesanan harus berisi 1–100 item.")
+		}
+		receipt, err := prepareOrderCommand(ctx, tx, a.ID, in.IdempotencyKey, "create", hash)
+		if err != nil {
+			return err
+		}
+		if receipt != nil {
+			current, err := replayOrderCommand(ctx, tx, *receipt)
+			if err != nil {
+				return err
+			}
+			result = CreatedOrder{Order: current.Order, Version: current.Version, Replayed: true}
+			return nil
 		}
 		customer, err := tx.GetCustomer(ctx, in.CustomerID)
 		if err != nil {
@@ -93,14 +115,14 @@ func (s *Orders) Create(ctx context.Context, actor string, in OrderInput) (Creat
 		if err != nil {
 			return err
 		}
-		hash, ok := tokenHash(token)
+		trackingHash, ok := tokenHash(token)
 		if !ok {
 			return errors.New("Generator menghasilkan token tracking tidak valid")
 		}
 		if err := tx.CreateOrder(ctx, order); err != nil {
 			return err
 		}
-		if err := tx.AddTracking(ctx, order.ID(), hash, at.Add(domain.TrackingLifetime)); err != nil {
+		if err := tx.AddTracking(ctx, order.ID(), trackingHash, at.Add(domain.TrackingLifetime)); err != nil {
 			return err
 		}
 		if err := audit(ctx, tx, s.runtime, a.ID, domain.OrderCreated, domain.OrderEntity, order.ID(), at); err != nil {
@@ -111,7 +133,13 @@ func (s *Orders) Create(ctx context.Context, actor string, in OrderInput) (Creat
 				return err
 			}
 		}
-		result = CreatedOrder{Order: order, TrackingToken: token, TrackingExpiresAt: at.Add(domain.TrackingLifetime)}
+		if err := tx.AppendOrderStatusEvent(ctx, domain.OrderStatusEvent{OrderID: order.ID(), ActorID: a.ID, Version: 1, To: domain.Received, OccurredAt: at, Source: "staff"}); err != nil {
+			return err
+		}
+		if err := tx.SaveOrderCommand(ctx, repository.OrderCommandReceipt{ActorID: a.ID, Key: in.IdempotencyKey, Operation: "create", OrderID: order.ID(), PayloadHash: hash, Version: 1}); err != nil {
+			return err
+		}
+		result = CreatedOrder{Order: order, TrackingToken: token, TrackingExpiresAt: at.Add(domain.TrackingLifetime), Version: 1}
 		return nil
 	})
 	if err != nil {
@@ -119,20 +147,41 @@ func (s *Orders) Create(ctx context.Context, actor string, in OrderInput) (Creat
 	}
 	return result, nil
 }
-func (s *Orders) ChangeStatus(ctx context.Context, actor, id string, to domain.OrderStatus, expected int64) (repository.OrderRecord, error) {
+func (s *Orders) ChangeStatus(ctx context.Context, actor, id string, to domain.OrderStatus, expected int64, key string) (repository.OrderRecord, error) {
 	if to == domain.Cancelled {
 		return repository.OrderRecord{}, invalid("status", "Gunakan pembatalan dengan alasan yang tercatat.")
 	}
-	return s.transition(ctx, actor, id, to, expected, "", ChangeStatus)
+	return s.transition(ctx, actor, id, to, expected, "", ChangeStatus, key)
 }
-func (s *Orders) Cancel(ctx context.Context, actor, id string, expected int64, reason string) (repository.OrderRecord, error) {
-	return s.transition(ctx, actor, id, domain.Cancelled, expected, reason, CancelOrder)
+func (s *Orders) Cancel(ctx context.Context, actor, id string, expected int64, reason, key string) (repository.OrderRecord, error) {
+	return s.transition(ctx, actor, id, domain.Cancelled, expected, reason, CancelOrder, key)
 }
-func (s *Orders) transition(ctx context.Context, actor, id string, to domain.OrderStatus, expected int64, reason string, action Action) (repository.OrderRecord, error) {
+func (s *Orders) transition(ctx context.Context, actor, id string, to domain.OrderStatus, expected int64, reason string, action Action, key string) (repository.OrderRecord, error) {
+	operation := "status"
+	if action == CancelOrder {
+		operation = "cancel"
+	}
+	hash, err := commandFingerprint(struct {
+		ID      string
+		To      domain.OrderStatus
+		Version int64
+		Reason  string
+	}{id, to, expected, reason})
+	if err != nil {
+		return repository.OrderRecord{}, err
+	}
 	var result repository.OrderRecord
-	err := s.uow.WithinTransaction(ctx, func(tx repository.Tx) error {
+	err = s.uow.WithinTransaction(ctx, func(tx repository.Tx) error {
 		a, err := authorize(ctx, tx, actor, action)
 		if err != nil {
+			return err
+		}
+		receipt, err := prepareOrderCommand(ctx, tx, a.ID, key, operation, hash)
+		if err != nil {
+			return err
+		}
+		if receipt != nil {
+			result, err = replayOrderCommand(ctx, tx, *receipt)
 			return err
 		}
 		r, err := tx.LockOrder(ctx, id)
@@ -146,6 +195,7 @@ func (s *Orders) transition(ctx context.Context, actor, id string, to domain.Ord
 		if err != nil {
 			return err
 		}
+		from := r.Order.Status()
 		if err := r.Order.Transition(to, at, reason); err != nil {
 			return err
 		}
@@ -160,6 +210,13 @@ func (s *Orders) transition(ctx context.Context, actor, id string, to domain.Ord
 			return err
 		}
 		r.Version++
+		if err := tx.AppendOrderStatusEvent(ctx, domain.OrderStatusEvent{OrderID: id, ActorID: a.ID, Version: r.Version, From: from, To: to, OccurredAt: at, Source: "staff"}); err != nil {
+			return err
+		}
+		if err := tx.SaveOrderCommand(ctx, repository.OrderCommandReceipt{ActorID: a.ID, Key: key, Operation: operation, OrderID: id, Version: r.Version, PayloadHash: hash}); err != nil {
+			return err
+		}
+		r.AppliedVersion = r.Version
 		result = r
 		return nil
 	})

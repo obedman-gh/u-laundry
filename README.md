@@ -2,13 +2,14 @@
 
 ULaundry adalah aplikasi operasional laundry di Perumahan Viola milik Obed Erwin Manambe. Stack: Go (`net/http`), PostgreSQL, HTML, CSS, dan JavaScript tanpa framework frontend besar.
 
-Status per 9 November 2026: **customer management dan tracking privat tahap 11 selesai, belum layak produksi**. Lihat [arsitektur](docs/architecture.md), [kontrak API dan perubahan kompatibilitas](docs/api.md), [aturan bisnis](docs/business-rules.md), [database](docs/database.md), [audit baseline](docs/audit-baseline.md), [kriteria penerimaan](docs/acceptance-criteria.md), [backlog](docs/backlog-30-days.md), dan [laporan hari 11](docs/progress/day-11.md) dan [keamanan autentikasi](docs/security.md).
+Status per 11 November 2026: **katalog layanan, histori harga dan snapshot order tahap 12 tersedia, belum layak produksi**. Lihat [arsitektur](docs/architecture.md), [kontrak API dan perubahan kompatibilitas](docs/api.md), [aturan bisnis](docs/business-rules.md), [database](docs/database.md), [audit baseline](docs/audit-baseline.md), [kriteria penerimaan](docs/acceptance-criteria.md), [backlog](docs/backlog-30-days.md), [laporan hari 12](docs/progress/day-12.md) dan [keamanan autentikasi](docs/security.md).
 
 ## Implementasi saat ini
 
 - Owner dapat mengelola staf melalui /staff.html; API/use case menegakkan matrix izin dan audit. Bootstrap akun pertama tanpa password hardcoded tersedia.
 - Login staf generik dengan bcrypt/JWT HS256, claims wajib, cookie HttpOnly, sesi PostgreSQL, CSRF, logout/revocation dan rate limit; role dimuat ulang pada use case.
 - Create/edit/search customer dan riwayat order, configure service, create order dengan perhitungan katalog server, status/version dan cancellation terkontrol, serta daftar/detail berfilter/pagination.
+- Owner/admin mengelola layanan kg/item, harga, durasi, aktif dan urutan melalui `/services.html`; histori revisi dan snapshot order menjaga total transaksi lama.
 - Endpoint payment terpisah, payment-ledger-audit satu transaksi, replay key identik tanpa posting ulang; `Sudah Lunas` bukan status operasional.
 - Struk staf terautentikasi dan HTML escaping; printer fisik 58/80mm belum diverifikasi. Tracking publik memakai token acak dengan hash tersimpan dan projection minimal.
 - Data laporan buku kas per rentang tanggal (default hari berjalan WITA), hanya owner/admin dan diaudit.
@@ -21,7 +22,7 @@ Struktur: `cmd/server/` menyusun pool, runtime clock/ID/token, repository dan us
 
 Use case dipisah menjadi Customers/Catalog/Orders/Payments/Tracking/Reports/Auth/Health, dengan clock/ID/token generator yang dapat diganti untuk test. Payload create order menolak harga/total klien; snapshot katalog dan diskon sah dihitung domain. Kegagalan audit menyebabkan rollback perubahan pada use case, bukan keberhasilan parsial. Pilihan kebijakan domain hari 05 tetap perlu ditinjau sebelum aktivasi operasional.
 
-Migration **000004** menambah version layanan, hash token tracking dan allowed audit actions. `up` menerapkan tujuh versi; 000001–000003 tetap immutable. **Server sekarang memakai tabel domain, bukan pesanan/kasir/keuangan lama.** Data legacy tetap, tetapi tidak otomatis terlihat/diimpor atau dipakai login. Sebelum deployment data nyata wajib backup/restore salinan, mapping/import akun/status/uang, rekonsiliasi dan satu writer. Bootstrap owner domain aman tersedia lewat cmd/admin; utilitas setup-kasir lama tidak membuat akun domain. Jangan menganggap perubahan kode ini sudah melakukan cutover data operasional. Demo SQL tetap khusus legacy dan tidak lagi menjadi data yang dibaca server baru.
+Migration **000008** menambah urutan layanan dan histori revisi dengan baseline nilai existing. `up` menerapkan delapan versi; SQL existing tetap immutable. **Server sekarang memakai tabel domain, bukan pesanan/kasir/keuangan lama.** Data legacy tetap, tetapi tidak otomatis terlihat/diimpor atau dipakai login. Sebelum deployment data nyata wajib backup/restore salinan, mapping/import akun/status/uang, rekonsiliasi dan satu writer. Bootstrap owner domain aman tersedia lewat cmd/admin; utilitas setup-kasir lama tidak membuat akun domain. Jangan menganggap perubahan kode ini sudah melakukan cutover data operasional. Seed katalog domain terpisah tersedia di scripts/catalog-demo.sql; scripts/demo.sql tetap khusus legacy.
 
 ## Prasyarat dan setup lokal
 
@@ -183,3 +184,21 @@ go build ./...
 ```
 
 Batas bukti: UI memakai test DOM sintetis; browser Android/printer/konfigurasi proxy produksi belum diverifikasi. Jangan mencatat path token pada proxy/Cloudflare/analytics. Lihat [laporan hari 11](docs/progress/day-11.md).
+
+## Layanan dan harga hari 12 — Tindakan — Hasil
+
+- Pengelolaan — `/services.html` tersedia dari antrean untuk owner/admin: kg/item, harga rupiah, durasi menit, status aktif, urutan dan histori. Harga harus eksplisit; Rp0 sah. Cashier membaca daftar aktif melalui API. Semua total order dihitung server dan disimpan sebagai snapshot.
+- Schema — migrator existing sampai 000008 menambah display_order dan service_revisions append-only, termasuk baseline nilai existing. Tidak ada data contoh dalam migration. Backup/restore salinan dan penghentian writer tetap diperlukan sebelum deployment; rollback memakai binary yang menulis histori versi 8 atau forward fix.
+- Demo — pada database disposable kosong berakhiran `_demo` yang sudah dimigrasi: `psql -v ON_ERROR_STOP=1 -d ulaundry_demo -f scripts/catalog-demo.sql` (atur koneksi ke cluster pengembangan). Hanya tiga layanan sintetis dan revisi; tanpa akun atau data pribadi. Pemanggilan ulang ditolak, bukan overwrite. Bootstrap owner tetap command terpisah.
+- Verifikasi terarah — command berikut tidak menjalankan test auth; bukti dan batas verifikasi di [laporan hari 12](docs/progress/day-12.md).
+
+```powershell
+$env:GOCACHE = 'F:\project\ulaundry\.cache\go-build'
+go test ./internal/domain ./internal/service ./internal/http/handler ./internal/migrate -run 'TestCatalog|TestLineCalculation|TestQuantityAndMoneyFailures|TestWeightAgainstExactArithmetic|TestOrderTotalsAndSnapshots|TestOrderValidation|TestCreateOrder' -count=1 -timeout=60s
+node --test --test-name-pattern=catalog scripts/frontend-contract.test.cjs
+# Hanya cluster test khusus; helper membuat/menghapus database disposable.
+$env:ULAUNDRY_TEST_ADMIN_DSN = 'postgres://TEST_ADMIN@127.0.0.1:55443/postgres?sslmode=disable'
+go test ./internal/service -run '^TestPostgresCatalog' -count=1 -timeout=120s -v
+go vet ./internal/domain ./internal/service ./internal/repository/postgres ./internal/http/dto ./internal/http/handler
+go build ./cmd/server ./cmd/migrate
+```

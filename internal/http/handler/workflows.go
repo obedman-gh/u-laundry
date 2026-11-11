@@ -108,7 +108,7 @@ func (h *Handler) ConfigureService(w http.ResponseWriter, r *http.Request) {
 		writeError(w, r, &dto.ValidationError{Message: "Versi konfigurasi tidak sesuai operasi create/update."})
 		return
 	}
-	result, err := h.use.Catalog.Configure(r.Context(), middleware.ActorID(r.Context()), service.ServiceInput{ID: id, Name: body.Name, Unit: domain.Unit(dto.StoredUnit(body.Unit)), UnitPrice: domain.Money(body.UnitPrice), Turnaround: time.Duration(body.Minutes) * time.Minute, Active: *body.Active, DisplayOrder: body.DisplayOrder, ExpectedVersion: body.Version})
+	result, err := h.use.Catalog.Configure(r.Context(), middleware.ActorID(r.Context()), service.ServiceInput{ID: id, Name: body.Name, Unit: domain.Unit(dto.StoredUnit(body.Unit)), UnitPrice: domain.Money(*body.UnitPrice), Turnaround: time.Duration(body.Minutes) * time.Minute, Active: *body.Active, DisplayOrder: body.DisplayOrder, ExpectedVersion: body.Version})
 	if err != nil {
 		writeError(w, r, err)
 		return

@@ -11,6 +11,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"testing"
 	"time"
@@ -110,8 +111,16 @@ func TestPostgresCatalogHistoryAndOrderSnapshots(t *testing.T) {
 		if err := tx.AddCustomer(ctx, customer); err != nil {
 			return err
 		}
-		return tx.CreateOrder(ctx, old)
+		return nil
 	}); err != nil {
+		t.Fatal(err)
+	}
+	// Preserve a real schema-7 order fixture before upgrading the adapter schema.
+	if _, err = db.ExecContext(ctx, `INSERT INTO public.orders(id,customer_id,customer_name,customer_contact,customer_notes,customer_created_at,customer_updated_at,created_by,item_count,subtotal,discount,discount_reason,discount_approved_by,total,notes,status,created_at,updated_at,estimated_ready_at)
+VALUES('order-before-upgrade','customer','Synthetic Customer','','',$1,$1,'actor',1,701,1,'Penyesuaian','actor',700,'','received',$1,$1,$2)`, fixed, fixed.Add(24*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.ExecContext(ctx, `INSERT INTO public.order_items(order_id,line_no,service_id,service_name,unit,unit_price,pieces,grams,line_total)VALUES('order-before-upgrade',1,'wash','Cuci Lama','kg',7005,0,100,701)`); err != nil {
 		t.Fatal(err)
 	}
 	before, err := migrate.Status(ctx, db)
@@ -125,7 +134,7 @@ func TestPostgresCatalogHistoryAndOrderSnapshots(t *testing.T) {
 		t.Fatal(err)
 	}
 	after, err := migrate.Status(ctx, db)
-	if err != nil || len(after) != 8 || after[7].AppliedAt == nil {
+	if err != nil || len(after) != 9 || after[7].AppliedAt == nil {
 		t.Fatal("schema 8", err)
 	}
 	for i := 0; i < 7; i++ {
@@ -145,7 +154,7 @@ func TestPostgresCatalogHistoryAndOrderSnapshots(t *testing.T) {
 	if err != nil || updated.Version != 4 {
 		t.Fatal(err)
 	}
-	in := OrderInput{CustomerID: customer.ID, Items: []domain.ItemRequest{{ServiceID: svc.ID, Quantity: domain.Quantity{Grams: 100}}}, Discount: 1, DiscountReason: "Penyesuaian"}
+	in := OrderInput{IdempotencyKey: "catalog-new", CustomerID: customer.ID, Items: []domain.ItemRequest{{ServiceID: svc.ID, Quantity: domain.Quantity{Grams: 100}}}, Discount: 1, DiscountReason: "Penyesuaian"}
 	newOrder, err := orders.Create(ctx, actor.ID, in)
 	if err != nil || newOrder.Order.Total() != 799 || !newOrder.Order.EstimatedReadyAt().Equal(rt.Clock.Now().Add(48*time.Hour)) {
 		t.Fatal("new price/duration", err)
@@ -173,8 +182,16 @@ func TestPostgresCatalogHistoryAndOrderSnapshots(t *testing.T) {
 	}
 	// Confirm that an order holding the catalog lock commits before a price editor.
 	hold := &catalogHoldWork{UnitOfWork: base, acquired: make(chan struct{}), release: make(chan struct{})}
-	orderDone := make(chan error, 1)
-	go func() { _, e := NewOrders(hold, rt).Create(ctx, actor.ID, in); orderDone <- e }()
+	type orderResult struct {
+		created CreatedOrder
+		err     error
+	}
+	orderDone := make(chan orderResult, 1)
+	in.IdempotencyKey = "catalog-concurrent"
+	go func() {
+		created, err := NewOrders(hold, rt).Create(ctx, actor.ID, in)
+		orderDone <- orderResult{created, err}
+	}()
 	select {
 	case <-hold.acquired:
 	case <-ctx.Done():
@@ -198,12 +215,17 @@ func TestPostgresCatalogHistoryAndOrderSnapshots(t *testing.T) {
 	if !blocked {
 		t.Fatal("price editor did not wait for order snapshot lock")
 	}
-	if err = <-orderDone; err != nil {
-		t.Fatal(err)
+	accepted := <-orderDone
+	if accepted.err != nil {
+		t.Fatal(accepted.err)
+	}
+	if accepted.created.Order.Items()[0].UnitPrice != 8000 || accepted.created.Order.Total() != 799 {
+		t.Fatal("waiting price editor changed accepted snapshot")
 	}
 	if err = <-editDone; err != nil {
 		t.Fatal(err)
 	}
+	in.IdempotencyKey = "catalog-post-edit"
 	postEdit, err := orders.Create(ctx, actor.ID, in)
 	if err != nil || postEdit.Order.Total() != 899 {
 		t.Fatal("committed new price", err)
@@ -217,6 +239,7 @@ func TestPostgresCatalogHistoryAndOrderSnapshots(t *testing.T) {
 	in.Items[0].Quantity = domain.Quantity{Pieces: 2}
 	in.Discount = 0
 	in.DiscountReason = ""
+	in.IdempotencyKey = "catalog-piece"
 	pieceOrder, err := orders.Create(ctx, actor.ID, in)
 	if err != nil || pieceOrder.Order.Total() != 40000 || pieceOrder.Order.Items()[0].Unit != domain.PerPiece {
 		t.Fatal("new unit", err)
@@ -230,6 +253,7 @@ func TestPostgresCatalogHistoryAndOrderSnapshots(t *testing.T) {
 	if _, err = catalog.Configure(ctx, actor.ID, config); err != nil {
 		t.Fatal(err)
 	}
+	in.IdempotencyKey = "catalog-inactive"
 	_, err = orders.Create(ctx, actor.ID, in)
 	requireDomain(t, err, domain.Conflict, "service_inactive")
 	active, err := catalog.List(ctx, actor.ID, repository.ServiceFilter{})
@@ -239,6 +263,16 @@ func TestPostgresCatalogHistoryAndOrderSnapshots(t *testing.T) {
 	all, err := catalog.List(ctx, actor.ID, repository.ServiceFilter{IncludeInactive: true})
 	if err != nil || len(all) != 1 || all[0].Service.Active {
 		t.Fatal("management inactive list", err)
+	}
+	// Re-read every accepted snapshot after later price/unit/active edits.
+	for _, expected := range []domain.Order{old, newOrder.Order, accepted.created.Order, postEdit.Order, pieceOrder.Order} {
+		r, err := orders.Get(ctx, actor.ID, expected.ID())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !reflect.DeepEqual(expected.Items(), r.Order.Items()) || expected.Subtotal() != r.Order.Subtotal() || expected.Discount() != r.Order.Discount() || expected.Total() != r.Order.Total() || !expected.EstimatedReadyAt().Equal(r.Order.EstimatedReadyAt()) {
+			t.Fatal("persisted snapshot changed after catalog edits", expected.ID())
+		}
 	}
 	history, err = catalog.History(ctx, actor.ID, svc.ID, repository.Page{Limit: 2, Offset: 1})
 	if err != nil || len(history) != 2 || history[0].Version != 6 || history[1].Version != 5 {
@@ -253,7 +287,14 @@ func TestPostgresCatalogHistoryAndOrderSnapshots(t *testing.T) {
 		`UPDATE services SET turnaround_ns=0 WHERE id='wash'`,
 		`UPDATE order_items SET line_total=line_total+1 WHERE order_id='order-before-upgrade'`,
 		`UPDATE order_items SET pieces=1 WHERE order_id='order-before-upgrade'`,
+		`UPDATE order_items SET grams=0 WHERE order_id='order-before-upgrade'`,
+		`UPDATE order_items SET grams=-100,line_total=0 WHERE order_id='order-before-upgrade'`,
+		`UPDATE order_items SET unit_price=-1,line_total=0 WHERE order_id='order-before-upgrade'`,
 		`UPDATE orders SET total=total+1 WHERE id='order-before-upgrade'`,
+		`UPDATE orders SET discount=-1,total=subtotal+1 WHERE id='order-before-upgrade'`,
+		`UPDATE orders SET discount=subtotal+1,total=-1 WHERE id='order-before-upgrade'`,
+		`UPDATE orders SET discount_reason='' WHERE id='order-before-upgrade'`,
+		`UPDATE orders SET discount_approved_by=NULL WHERE id='order-before-upgrade'`,
 		`UPDATE service_revisions SET unit_price=1 WHERE service_id='wash'`,
 		`DELETE FROM service_revisions WHERE service_id='wash'`,
 	} {
@@ -277,6 +318,15 @@ func TestPostgresCatalogHistoryAndOrderSnapshots(t *testing.T) {
 	all, err = catalog.List(ctx, actor.ID, repository.ServiceFilter{IncludeInactive: true})
 	if err != nil || len(all) != 3 || all[0].Service.Name != "Alpha" || all[1].Service.Name != "Zulu" || all[2].Service.ID != "wash" {
 		t.Fatal("display ordering", err)
+	}
+	// Zero is the existing minimum, including an authorized full discount.
+	free, err := orders.Create(ctx, actor.ID, OrderInput{IdempotencyKey: "catalog-free", CustomerID: customer.ID, Items: []domain.ItemRequest{{ServiceID: all[0].Service.ID, Quantity: domain.Quantity{Pieces: 1}}}, Discount: 1, DiscountReason: "Diskon penuh"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	zero, err := orders.Get(ctx, actor.ID, free.Order.ID())
+	if err != nil || zero.Order.Subtotal() != 1 || zero.Order.Discount().Amount != 1 || zero.Order.Total() != 0 || zero.Order.PaymentStatus() != domain.Paid || len(zero.Order.Payments()) != 0 {
+		t.Fatal("zero minimum roundtrip", err)
 	}
 }
 

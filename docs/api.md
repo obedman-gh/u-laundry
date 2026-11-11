@@ -1,6 +1,6 @@
-# Kontrak HTTP API — hari 11
+# Kontrak HTTP API — hari 12
 
-Server memakai storage domain dan autentikasi migration 000007. Ini perubahan kontrak dari handler legacy: tidak menerima total/harga/status klien saat create; data/akun pesanan-kasir-keuangan lama belum diimpor. Jangan aktifkan pada data operasional sebelum mapping, backup/restore dan rekonsiliasi; lihat [architecture.md](architecture.md).
+Server memakai storage domain hingga migration 000008 dan autentikasi existing. Ini perubahan kontrak dari handler legacy: tidak menerima total/harga/status klien saat create order; data/akun pesanan-kasir-keuangan lama belum diimpor. Jangan aktifkan pada data operasional sebelum mapping, backup/restore dan rekonsiliasi; lihat [architecture.md](architecture.md).
 
 Semua body JSON memakai satu Content-Type application/json (charset UTF-8 opsional), maksimal 64 KiB termasuk whitespace, satu objek UTF-8 dan tanpa field asing. Content-Encoding selain identity atau header encoding berulang ditolak. Field duplikat, termasuk escape/alias kapitalisasi dan objek item bersarang, ditolak sebelum use case dipanggil. Rupiah dan gram/jumlah berupa integer. Cookie sesi HttpOnly diperlukan selain login/health/tracking. Bearer/localStorage tidak diterima lagi. JWT memerlukan HS256, issuer/audience/iat/exp/sub/username/role/jti dan registrasi sesi PostgreSQL; role/active tetap dimuat ulang setiap use case. Mutasi privat memerlukan X-CSRF-Token dan Origin persis PUBLIC_BASE_URL; login memerlukan Origin tersebut tanpa sesi awal. Owner pertama dibuat dengan command bootstrap-owner pada tabel staff kosong; staf berikutnya dikelola owner melalui API/UI. Utilitas setup-kasir lama hanya menyentuh tabel legacy dan bukan jalur akun domain.
 
@@ -15,7 +15,10 @@ Semua body JSON memakai satu Content-Type application/json (charset UTF-8 opsion
 | GET /api/customers/{id} | Staf aktif; profil termasuk address/notes/version |
 | PUT /api/customers/{id} | Staf aktif; name/contact/address/notes + version positif; audit atomik |
 | GET /api/customers/{id}/orders | Staf aktif; riwayat order customer, limit/offset; tanpa token/ledger |
-| POST /api/services | Owner/admin; name/unit/unit_price/turnaround_minutes/active → service_id/version |
+| GET /api/services | Staf aktif; daftar aktif, limit/offset; include_inactive=true hanya owner/admin |
+| GET /api/services/{id} | Owner/admin; konfigurasi lengkap dengan version |
+| GET /api/services/{id}/history | Owner/admin; revisi lengkap, limit/offset, versi terbaru dahulu |
+| POST /api/services | Owner/admin; name/unit/unit_price/turnaround_minutes/active/display_order → konfigurasi/service_id/version |
 | PUT /api/services/{id} | Owner/admin; field konfigurasi + expected `version`; snapshot order lama tetap |
 | POST /api/pesanan | CustomerID/item/discount/notes/estimasi → order, tracking_token sekali, tracking_expires_at |
 | GET /api/pesanan | Staf; limit/offset/status/customer_id, array ringkasan kompatibel field daftar lama |
@@ -41,11 +44,33 @@ Contoh create order (ID layanan/customer dari respons create/configure):
 }
 ```
 
-Layanan kg memakai grams; piece memakai pieces, field lain nol. Estimasi boleh tidak dikirim dan dihitung dari durasi katalog. ID order, nama customer, harga, total dan status bukan field bebas dari request; customer_id menunjuk customer yang sudah tersimpan. Diskon nominal memerlukan owner/admin dan discount_reason. Total response dihitung server. Contoh update progres: `{"status":"processing","version":1}`. Lima status: received → processing → ready → collected, received/processing dapat cancelled melalui endpoint cancel. Pengambilan harus lunas. Estimasi dan batas periode laporan dinormalisasi UTC/mikrodetik; periode yang menjadi kosong setelah normalisasi ditolak.
+Layanan kg memakai grams; item memakai pieces, field lain nol. Estimasi boleh tidak dikirim dan dihitung dari durasi katalog. ID order, nama customer, harga, total dan status bukan field bebas dari request; customer_id menunjuk customer yang sudah tersimpan. Diskon nominal memerlukan owner/admin dan discount_reason. Total response dihitung server. Contoh update progres: `{"status":"processing","version":1}`. Lima status: received → processing → ready → collected, received/processing dapat cancelled melalui endpoint cancel. Pengambilan harus lunas. Estimasi dan batas periode laporan dinormalisasi UTC/mikrodetik; periode yang menjadi kosong setelah normalisasi ditolak.
 
 Pembayaran: `{"amount":10000,"method":"cash"}` dengan Idempotency-Key yang dibuat klien dan dipakai kembali hanya untuk payload bisnis sama. Metode manual cash/bank_transfer/qris, tanpa gateway. Replay mengembalikan payment_id/amount yang sama dan replayed=true; tidak menambah ledger/audit. Status `Sudah Lunas` lama tidak diterima sebagai status operasional. Create order belum idempotent; jangan retry buta setelah commit dengan hasil jaringan tidak diketahui.
 
 Pagination limit default 20/maksimum 100, offset minimal 0. Detail sekarang satu objek, bukan array satu elemen. Ringkasan tetap id_pesanan/nama_customer/layanan/total_biaya/status untuk halaman daftar yang ada, ditambah payment_status/version. Nilai status sekarang kode domain; update frontend lengkap/diskon/POS belum dibuat. Konsumen JavaScript harus memperhatikan batas integer aman saat menangani nominal BIGINT besar; seluruh kalkulasi server tetap int64.
+
+## Layanan dan harga hari 12 — Tindakan — Hasil
+
+- Konfigurasi — `POST /api/services` menghasilkan 201; `PUT /api/services/{id}` menghasilkan 200. Keduanya menerima seluruh konfigurasi berikut; PUT juga wajib `version` positif dari GET terakhir. Create memakai versi 0/tidak dikirim. Harga dan status aktif harus eksplisit; harga hilang/null bukan Rp0. Tidak ada DELETE; gunakan active=false.
+
+```json
+{
+  "name": "Contoh Selimut",
+  "unit": "item",
+  "unit_price": 20000,
+  "turnaround_minutes": 2880,
+  "active": true,
+  "display_order": 20
+}
+```
+
+- Respons — create/update/detail mengembalikan service_id, version, name, unit, unit_price, turnaround_minutes, active dan display_order. Unit publik kg/item; request alias `piece` masih diterima, storage/snapshot lama tetap `piece`. GET daftar mengembalikan array konfigurasi yang sama, default aktif saja, urutan display_order/name/id. include_inactive hanya menerima true/false eksplisit bila dikirim; cashier dengan true mendapat 403.
+- Batas — nama 1–100 karakter setelah trim, harga integer 0..MaxInt64, durasi integer 1..153.722.867 menit, urutan integer 0..1.000.000 (default 0). Rupiah pecahan, angka negatif, overflow, unit lain, active hilang/null atau versi tidak sah ditolak 400; edit stale 409, ID tidak ditemukan 404. PUT mengganti konfigurasi lengkap, bukan patch. UI membatasi integer pada Number.MAX_SAFE_INTEGER; server tetap memakai int64.
+- Histori — GET `/api/services/{id}/history?limit=20&offset=0` mengembalikan array revisi dari versi terbaru, konfigurasi lengkap ditambah changed_at RFC3339, source dan changed_by khusus revisi staf. source adalah staff, baseline atau demo. Baseline migration 000008 mencatat nilai existing pada versinya saat upgrade; bukan rekonstruksi harga sebelumnya. Detail/histori/daftar termasuk nonaktif/mutasi hanya owner/admin; semua respons bisnis no-store.
+- Order — hanya menerima service_id dan grams/pieces integer positif tepat satu per baris. kg minimal 1 gram, item minimal 1 buah; tidak ada minimum berat/tagihan tambahan. Server memuat dan mengunci layanan aktif, menghitung line_total dengan pembulatan half-up per baris, lalu subtotal = jumlah line_total dan total = subtotal − discount. Diskon 0..subtotal, nominal positif hanya owner/admin dengan alasan; minimum total Rp0, tanpa payment/ledger nol. Layanan nonaktif ditolak 409; satuan/jumlah tidak cocok, diskon tidak sah atau hasil overflow ditolak 400.
+- Snapshot — POST order pada field order dan GET detail menyertakan items berisi service_id/service_name/unit/unit_price/pieces/grams/line_total serta subtotal, discount dan total_biaya. Daftar ringkasan tidak menyertakan rincian item. Nama/satuan/harga/jumlah dan subtotal/diskon/total diambil dari snapshot tersimpan saat membaca detail/struk; perubahan katalog tidak menghitung ulang order lama. Contoh Rp7.005/kg × 100 gram → Rp701; diskon Rp1 → total_biaya Rp700. Setelah harga Rp8.000/kg berlaku, order baru yang sama menjadi Rp799, order lama tetap Rp700.
+- Transaksi — konfigurasi, revisi dan audit atomik; order mengunci layanan menurut ID terurut sehingga edit harga menunggu snapshot order yang sedang diterima. Order baru setelah commit edit memakai harga baru. Tidak ada endpoint mengubah total order lama melalui konfigurasi layanan.
 
 ## Error dan correlation ID
 

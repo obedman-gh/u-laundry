@@ -130,19 +130,19 @@ type NewOrderInput struct {
 // Order owns mutable workflow/payment state; callers receive value snapshots.
 // RestoreOrder validates hydration; transaction locking belongs to persistence.
 type Order struct {
-	id                                     string
-	customer                               Customer
-	createdBy                              string
-	items                                  []OrderItem
-	subtotal, total                        Money
-	discount                               Discount
-	notes                                  string
-	status                                 OrderStatus
-	createdAt, updatedAt, estimatedReadyAt time.Time
-	readyAt, collectedAt, cancelledAt      time.Time
-	cancellationReason                     string
-	payments                               []Payment
-	paid                                   Money
+	id                                              string
+	customer                                        Customer
+	createdBy                                       string
+	items                                           []OrderItem
+	subtotal, total                                 Money
+	discount                                        Discount
+	notes                                           string
+	status                                          OrderStatus
+	createdAt, updatedAt, estimatedReadyAt          time.Time
+	processingAt, readyAt, collectedAt, cancelledAt time.Time
+	cancellationReason                              string
+	payments                                        []Payment
+	paid                                            Money
 }
 
 func NewOrder(in NewOrderInput, customer Customer, catalog []Service, actor Staff) (Order, error) {
@@ -240,6 +240,7 @@ func (o Order) CreatedAt() time.Time        { return o.createdAt }
 func (o Order) UpdatedAt() time.Time        { return o.updatedAt }
 func (o Order) EstimatedReadyAt() time.Time { return o.estimatedReadyAt }
 func (o Order) ReadyAt() time.Time          { return o.readyAt }
+func (o Order) ProcessingAt() time.Time     { return o.processingAt }
 func (o Order) CollectedAt() time.Time      { return o.collectedAt }
 func (o Order) CancelledAt() time.Time      { return o.cancelledAt }
 func (o Order) CancellationReason() string  { return o.cancellationReason }
@@ -290,6 +291,8 @@ func (o *Order) Transition(to OrderStatus, at time.Time, reason string) error {
 	// Mutate only after all checks; operational transitions never post money.
 	o.status, o.updatedAt = to, at
 	switch to {
+	case Processing:
+		o.processingAt = at
 	case Ready:
 		o.readyAt = at
 	case Collected:

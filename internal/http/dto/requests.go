@@ -93,7 +93,7 @@ func (v TrackingRotationRequest) Validate() error {
 type ServiceRequest struct {
 	Name         string `json:"name"`
 	Unit         string `json:"unit"`
-	UnitPrice    int64  `json:"unit_price"`
+	UnitPrice    *int64 `json:"unit_price"`
 	Minutes      int64  `json:"turnaround_minutes"`
 	Active       *bool  `json:"active"`
 	Version      int64  `json:"version"`
@@ -101,7 +101,7 @@ type ServiceRequest struct {
 }
 
 func (v ServiceRequest) Validate() error {
-	if !text(v.Name, 100, true, false) || (v.Unit != "kg" && v.Unit != "item" && v.Unit != "piece") || v.UnitPrice < 0 || v.Minutes <= 0 || v.Minutes > math.MaxInt64/int64(time.Minute) || v.Active == nil || v.Version < 0 || v.DisplayOrder < 0 || v.DisplayOrder > 1000000 {
+	if !text(v.Name, 100, true, false) || (v.Unit != "kg" && v.Unit != "item" && v.Unit != "piece") || v.UnitPrice == nil || *v.UnitPrice < 0 || v.Minutes <= 0 || v.Minutes > math.MaxInt64/int64(time.Minute) || v.Active == nil || v.Version < 0 || v.DisplayOrder < 0 || v.DisplayOrder > 1000000 {
 		return bad("Konfigurasi layanan wajib lengkap dan valid.")
 	}
 	return nil

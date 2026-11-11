@@ -80,7 +80,7 @@ INSERT INTO order_tracking_tokens(order_id,token_hash)VALUES('existing-order',de
 		t.Fatal(err)
 	}
 	after, err := migrate.Status(ctx, db)
-	if err != nil || len(after) != 8 || after[6].AppliedAt == nil {
+	if err != nil || len(after) != 9 || after[6].AppliedAt == nil {
 		t.Fatal("upgrade", err)
 	}
 	for i := 0; i < 6; i++ {
@@ -142,7 +142,7 @@ INSERT INTO order_tracking_tokens(order_id,token_hash)VALUES('existing-order',de
 	if err = base.WithinTransaction(ctx, func(tx repository.Tx) error { return tx.AddService(ctx, svc) }); err != nil {
 		t.Fatal(err)
 	}
-	in := OrderInput{CustomerID: c.ID, Items: []domain.ItemRequest{{ServiceID: svc.ID, Quantity: domain.Quantity{Pieces: 1}}}}
+	in := OrderInput{IdempotencyKey: "privacy-create", CustomerID: c.ID, Items: []domain.ItemRequest{{ServiceID: svc.ID, Quantity: domain.Quantity{Pieces: 1}}}}
 	o, err := orders.Create(ctx, "existing-staff", in)
 	if err != nil {
 		t.Fatal(err)
@@ -168,6 +168,7 @@ INSERT INTO order_tracking_tokens(order_id,token_hash)VALUES('existing-order',de
 	// Same raw token on another order fails UNIQUE and rolls back order + audit.
 	duplicate := rt
 	duplicate.Tokens = GeneratorFunc(func() (string, error) { return o.TrackingToken, nil })
+	in.IdempotencyKey = "privacy-duplicate-token"
 	bad, err := NewOrders(base, duplicate).Create(ctx, "existing-staff", in)
 	if !errors.Is(err, repository.ErrConflict) || bad.TrackingToken != "" {
 		t.Fatal("duplicate capability accepted", err)

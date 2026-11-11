@@ -53,14 +53,28 @@ type OrderResponse struct {
 	CreatedAt        time.Time           `json:"waktu_pesan"`
 	EstimatedReadyAt time.Time           `json:"waktu_perkiraan_selesai"`
 	ReadyAt          *time.Time          `json:"waktu_selesai_real"`
+	ProcessingAt     *time.Time          `json:"processing_at"`
+	CollectedAt      *time.Time          `json:"collected_at"`
+	CancelledAt      *time.Time          `json:"cancelled_at"`
+	Replayed         bool                `json:"replayed,omitempty"`
+	AppliedVersion   int64               `json:"applied_version,omitempty"`
 	Items            []OrderItemResponse `json:"items,omitempty"`
 	Subtotal         *int64              `json:"subtotal,omitempty"`
 	Discount         *int64              `json:"discount,omitempty"`
 }
 type CreatedOrderResponse struct {
 	Order             OrderResponse `json:"order"`
-	TrackingToken     string        `json:"tracking_token"`
-	TrackingExpiresAt time.Time     `json:"tracking_expires_at"`
+	TrackingToken     string        `json:"tracking_token,omitempty"`
+	TrackingExpiresAt *time.Time    `json:"tracking_expires_at,omitempty"`
+	Replayed          bool          `json:"replayed"`
+}
+type OrderStatusEventResponse struct {
+	Version    int64     `json:"version"`
+	From       string    `json:"from_status,omitempty"`
+	To         string    `json:"to_status"`
+	ActorID    string    `json:"actor_id,omitempty"`
+	OccurredAt time.Time `json:"occurred_at"`
+	Source     string    `json:"source"`
 }
 type PaymentResponse struct {
 	ID       string `json:"payment_id"`

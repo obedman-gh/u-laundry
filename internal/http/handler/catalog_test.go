@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 	"ulaundry/internal/domain"
+	"ulaundry/internal/http/dto"
 	"ulaundry/internal/repository"
 	"ulaundry/internal/service"
 )
@@ -48,6 +49,8 @@ func TestCatalogHTTPConfigureAndUnitCompatibility(t *testing.T) {
 		}
 	}
 	for _, body := range []string{
+		`{"name":"X","unit":"item","turnaround_minutes":60,"active":true}`,
+		`{"name":"X","unit":"item","unit_price":null,"turnaround_minutes":60,"active":true}`,
 		`{"name":"X","unit":"item","unit_price":-1,"turnaround_minutes":60,"active":true}`,
 		`{"name":"X","unit":"item","unit_price":1.5,"turnaround_minutes":60,"active":true}`,
 		`{"name":"X","unit":"litre","unit_price":1,"turnaround_minutes":60,"active":true}`,
@@ -66,6 +69,20 @@ func TestCatalogHTTPConfigureAndUnitCompatibility(t *testing.T) {
 	w := protected(t, "PUT", "/api/services/order-1", `{"name":"X","unit":"item","unit_price":1,"turnaround_minutes":60,"active":true}`, h.ConfigureService)
 	if w.Code != 400 || calls != 2 {
 		t.Fatal("update missing version")
+	}
+}
+func TestCatalogHTTPExplicitZeroPrice(t *testing.T) {
+	calls := 0
+	h := New(Dependencies{Catalog: catalogStub{configure: func(_ context.Context, _ string, in service.ServiceInput) (repository.ServiceRecord, error) {
+		calls++
+		if in.UnitPrice != 0 || in.Active {
+			t.Fatal("explicit free inactive service changed")
+		}
+		return repository.ServiceRecord{Service: domain.Service{ID: "free", Name: in.Name, Unit: in.Unit, UnitPrice: in.UnitPrice, Turnaround: in.Turnaround}, Version: 1}, nil
+	}}})
+	w := protected(t, "POST", "/api/services", `{"name":"Contoh Gratis","unit":"kg","unit_price":0,"turnaround_minutes":60,"active":false}`, h.ConfigureService)
+	if w.Code != 201 || calls != 1 || !strings.Contains(w.Body.String(), `"unit_price":0`) {
+		t.Fatal("zero price rejected", w.Code, w.Body.String())
 	}
 }
 func TestCatalogHTTPListDetailAndHistory(t *testing.T) {
@@ -117,33 +134,15 @@ func TestCatalogOrderSnapshotResponse(t *testing.T) {
 		return repository.OrderRecord{Order: o, Version: 1}, nil
 	}}})
 	w := protected(t, "GET", "/api/pesanan/order-1", "", h.GetPesananById)
-	var body struct {
-		Subtotal, Discount, Total int64
-		Items                     []struct {
-			Unit                        string
-			UnitPrice, Grams, LineTotal int64
-		}
-	}
-	var raw map[string]json.RawMessage
-	if err := json.Unmarshal(w.Body.Bytes(), &raw); err != nil {
+	var body dto.OrderResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatal(err)
 	}
-	for _, key := range []string{"items", "subtotal", "discount", "total_biaya"} {
-		if _, ok := raw[key]; !ok {
-			t.Fatal("missing financial snapshot", key)
-		}
-	}
-	if err := json.Unmarshal(raw["subtotal"], &body.Subtotal); err != nil {
-		t.Fatal(err)
-	}
-	if err := json.Unmarshal(raw["discount"], &body.Discount); err != nil {
-		t.Fatal(err)
-	}
-	var items []map[string]any
-	if err := json.Unmarshal(raw["items"], &items); err != nil {
-		t.Fatal(err)
-	}
-	if w.Code != 200 || body.Subtotal != 17500 || body.Discount != 0 || len(items) != 1 || items[0]["unit_price"] != float64(7000) || items[0]["grams"] != float64(2500) || items[0]["line_total"] != float64(17500) {
+	if w.Code != 200 || body.Subtotal == nil || *body.Subtotal != 17500 || body.Discount == nil || *body.Discount != 0 || body.Total != 17500 || len(body.Items) != 1 {
 		t.Fatal("snapshot response", w.Body.String())
+	}
+	item := body.Items[0]
+	if item.ServiceID != "s-1" || item.Name != "Cuci" || item.Unit != "kg" || item.UnitPrice != 7000 || item.Grams != 2500 || item.Pieces != 0 || item.LineTotal != 17500 {
+		t.Fatal("incomplete item snapshot", w.Body.String())
 	}
 }

@@ -6,22 +6,22 @@ import "time"
 // RestoreOrder validates history without using today's mutable service prices,
 // customer details, or staff permissions for an already accepted order.
 type OrderState struct {
-	ID, CreatedBy                          string
-	Customer                               Customer
-	Items                                  []OrderItem
-	Subtotal, Total                        Money
-	Discount                               Discount
-	Notes                                  string
-	Status                                 OrderStatus
-	CreatedAt, UpdatedAt, EstimatedReadyAt time.Time
-	ReadyAt, CollectedAt, CancelledAt      time.Time
-	CancellationReason                     string
-	Payments                               []Payment
+	ID, CreatedBy                                   string
+	Customer                                        Customer
+	Items                                           []OrderItem
+	Subtotal, Total                                 Money
+	Discount                                        Discount
+	Notes                                           string
+	Status                                          OrderStatus
+	CreatedAt, UpdatedAt, EstimatedReadyAt          time.Time
+	ProcessingAt, ReadyAt, CollectedAt, CancelledAt time.Time
+	CancellationReason                              string
+	Payments                                        []Payment
 }
 
 func (o Order) Snapshot() OrderState {
 	return OrderState{ID: o.id, CreatedBy: o.createdBy, Customer: o.customer, Items: o.Items(), Subtotal: o.subtotal, Total: o.total, Discount: o.discount, Notes: o.notes, Status: o.status,
-		CreatedAt: o.createdAt, UpdatedAt: o.updatedAt, EstimatedReadyAt: o.estimatedReadyAt, ReadyAt: o.readyAt, CollectedAt: o.collectedAt, CancelledAt: o.cancelledAt, CancellationReason: o.cancellationReason, Payments: o.Payments()}
+		CreatedAt: o.createdAt, UpdatedAt: o.updatedAt, EstimatedReadyAt: o.estimatedReadyAt, ProcessingAt: o.processingAt, ReadyAt: o.readyAt, CollectedAt: o.collectedAt, CancelledAt: o.cancelledAt, CancellationReason: o.cancellationReason, Payments: o.Payments()}
 }
 
 func RestoreOrder(s OrderState) (Order, error) {
@@ -76,10 +76,15 @@ func RestoreOrder(s OrderState) (Order, error) {
 	if !s.Status.Valid() {
 		return Order{}, invalid("status", "Status operasional tidak dikenal.")
 	}
-	for _, at := range []time.Time{s.ReadyAt, s.CollectedAt, s.CancelledAt} {
+	for _, at := range []time.Time{s.ProcessingAt, s.ReadyAt, s.CollectedAt, s.CancelledAt} {
 		if !at.IsZero() && (at.Before(s.CreatedAt) || at.After(s.UpdatedAt)) {
 			return Order{}, invalid("milestone", "Waktu milestone tidak sesuai riwayat pesanan.")
 		}
+	}
+	// Old orders can have an unknown processing time. Never fabricate a past
+	// milestone during hydration or migration; all new transitions record it.
+	if !s.ProcessingAt.IsZero() && (s.Status == Received || (!s.ReadyAt.IsZero() && s.ReadyAt.Before(s.ProcessingAt)) || (!s.CancelledAt.IsZero() && s.CancelledAt.Before(s.ProcessingAt))) {
+		return Order{}, invalid("processing_at", "Waktu mulai proses tidak sesuai riwayat pesanan.")
 	}
 	switch s.Status {
 	case Received, Processing:
@@ -125,5 +130,5 @@ func RestoreOrder(s OrderState) (Order, error) {
 		return Order{}, invalid("payments", "Saldo pembayaran tidak sesuai status dan total.")
 	}
 	return Order{id: s.ID, createdBy: s.CreatedBy, customer: s.Customer, items: append([]OrderItem(nil), s.Items...), subtotal: s.Subtotal, total: s.Total, discount: s.Discount, notes: s.Notes, status: s.Status,
-		createdAt: s.CreatedAt, updatedAt: s.UpdatedAt, estimatedReadyAt: s.EstimatedReadyAt, readyAt: s.ReadyAt, collectedAt: s.CollectedAt, cancelledAt: s.CancelledAt, cancellationReason: s.CancellationReason, payments: append([]Payment(nil), s.Payments...), paid: paid}, nil
+		createdAt: s.CreatedAt, updatedAt: s.UpdatedAt, estimatedReadyAt: s.EstimatedReadyAt, processingAt: s.ProcessingAt, readyAt: s.ReadyAt, collectedAt: s.CollectedAt, cancelledAt: s.CancelledAt, cancellationReason: s.CancellationReason, payments: append([]Payment(nil), s.Payments...), paid: paid}, nil
 }

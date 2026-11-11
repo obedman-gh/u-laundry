@@ -11,7 +11,7 @@ import (
 
 func TestCatalog(t *testing.T) {
 	all, err := catalog(migrations.Files)
-	if err != nil || len(all) != 8 {
+	if err != nil || len(all) != 9 {
 		t.Fatalf("catalog = %v, %v", all, err)
 	}
 	for _, files := range []fstest.MapFS{

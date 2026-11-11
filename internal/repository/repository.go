@@ -28,8 +28,10 @@ type OrderFilter struct {
 	CustomerID string
 }
 type OrderRecord struct {
-	Order   domain.Order
-	Version int64
+	Order          domain.Order
+	Version        int64
+	Replayed       bool
+	AppliedVersion int64
 }
 type OrderSummary struct {
 	ID, CustomerID, CustomerName string
@@ -105,11 +107,26 @@ type ReportQueries interface {
 type OrderQueries interface {
 	GetOrder(context.Context, string) (OrderRecord, error)
 	ListOrders(context.Context, OrderFilter) ([]OrderSummary, error)
+	OrderHistory(context.Context, string, Page) ([]domain.OrderStatusEvent, error)
 }
 type OrderCommands interface {
 	CreateOrder(context.Context, domain.Order) error
 	LockOrder(context.Context, string) (OrderRecord, error)
 	SaveOrderProgress(context.Context, domain.Order, int64) error
+	AppendOrderStatusEvent(context.Context, domain.OrderStatusEvent) error
+}
+
+// Receipt and the corresponding order/audit mutations commit together. Keys are
+// scoped to the actor across create/status/cancel, not to a network connection.
+type OrderCommandReceipt struct {
+	ActorID, Key, Operation, OrderID string
+	PayloadHash                      [32]byte
+	Version                          int64
+}
+type OrderCommandDeduplication interface {
+	LockOrderCommandKey(context.Context, string, string) error
+	FindOrderCommand(context.Context, string, string) (OrderCommandReceipt, error)
+	SaveOrderCommand(context.Context, OrderCommandReceipt) error
 }
 type PaymentQueries interface {
 	FindPaymentByKey(context.Context, string, string) (domain.Payment, error)
@@ -163,6 +180,7 @@ type Tx interface {
 	CustomerRegistration
 	ServiceRegistration
 	OrderCommands
+	OrderCommandDeduplication
 	PaymentPosting
 	ExpensePosting
 	UserRegistration

@@ -26,7 +26,7 @@ func orderView(record repository.OrderRecord) dto.OrderResponse {
 		items = append(items, dto.OrderItemResponse{ServiceID: item.ServiceID, Name: item.ServiceName, Unit: dto.PublicUnit(string(item.Unit)), UnitPrice: int64(item.UnitPrice), Pieces: item.Quantity.Pieces, Grams: item.Quantity.Grams, LineTotal: int64(item.LineTotal)})
 	}
 	subtotal, discount := int64(o.Subtotal()), int64(o.Discount().Amount)
-	return dto.OrderResponse{ID: o.ID(), Customer: o.Customer().Name, Services: strings.Join(names, ", "), Total: int64(o.Total()), Status: string(o.Status()), PaymentStatus: string(o.PaymentStatus()), Version: record.Version, CreatedAt: o.CreatedAt(), EstimatedReadyAt: o.EstimatedReadyAt(), ReadyAt: nullableTime(o.ReadyAt()), Items: items, Subtotal: &subtotal, Discount: &discount}
+	return dto.OrderResponse{ID: o.ID(), Customer: o.Customer().Name, Services: strings.Join(names, ", "), Total: int64(o.Total()), Status: string(o.Status()), PaymentStatus: string(o.PaymentStatus()), Version: record.Version, CreatedAt: o.CreatedAt(), EstimatedReadyAt: o.EstimatedReadyAt(), ReadyAt: nullableTime(o.ReadyAt()), ProcessingAt: nullableTime(o.ProcessingAt()), CollectedAt: nullableTime(o.CollectedAt()), CancelledAt: nullableTime(o.CancelledAt()), Replayed: record.Replayed, AppliedVersion: record.AppliedVersion, Items: items, Subtotal: &subtotal, Discount: &discount}
 }
 func (h *Handler) GetSemuaPesanan(w http.ResponseWriter, r *http.Request) { h.list(w, r, false) }
 func (h *Handler) GetPesananByStatus(w http.ResponseWriter, r *http.Request) {
@@ -87,7 +87,11 @@ func (h *Handler) BikinPesananBaru(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	in := service.OrderInput{CustomerID: body.CustomerID, Discount: domain.Money(body.Discount), DiscountReason: body.DiscountReason, Notes: body.Notes, EstimatedReadyAt: body.EstimatedReadyAt}
+	key, ok := orderCommandKey(w, r)
+	if !ok {
+		return
+	}
+	in := service.OrderInput{IdempotencyKey: key, CustomerID: body.CustomerID, Discount: domain.Money(body.Discount), DiscountReason: body.DiscountReason, Notes: body.Notes, EstimatedReadyAt: body.EstimatedReadyAt}
 	for _, item := range body.Items {
 		in.Items = append(in.Items, domain.ItemRequest{ServiceID: item.ServiceID, Quantity: domain.Quantity{Pieces: item.Pieces, Grams: item.Grams}})
 	}
@@ -97,7 +101,11 @@ func (h *Handler) BikinPesananBaru(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Location", "/api/pesanan/"+url.PathEscape(created.Order.ID()))
-	response.JSON(w, r, http.StatusCreated, dto.CreatedOrderResponse{Order: orderView(repository.OrderRecord{Order: created.Order, Version: 1}), TrackingToken: created.TrackingToken, TrackingExpiresAt: created.TrackingExpiresAt})
+	status := http.StatusCreated
+	if created.Replayed {
+		status = http.StatusOK
+	}
+	response.JSON(w, r, status, dto.CreatedOrderResponse{Order: orderView(repository.OrderRecord{Order: created.Order, Version: created.Version, AppliedVersion: 1}), TrackingToken: created.TrackingToken, TrackingExpiresAt: nullableTime(created.TrackingExpiresAt), Replayed: created.Replayed})
 }
 func (h *Handler) UpdateStatusPesanan(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r)
@@ -108,7 +116,11 @@ func (h *Handler) UpdateStatusPesanan(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	item, err := h.use.Orders.ChangeStatus(r.Context(), middleware.ActorID(r.Context()), id, domain.OrderStatus(body.Status), body.Version)
+	key, ok := orderCommandKey(w, r)
+	if !ok {
+		return
+	}
+	item, err := h.use.Orders.ChangeStatus(r.Context(), middleware.ActorID(r.Context()), id, domain.OrderStatus(body.Status), body.Version, key)
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -124,12 +136,50 @@ func (h *Handler) CancelOrder(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	item, err := h.use.Orders.Cancel(r.Context(), middleware.ActorID(r.Context()), id, body.Version, body.Reason)
+	key, ok := orderCommandKey(w, r)
+	if !ok {
+		return
+	}
+	item, err := h.use.Orders.Cancel(r.Context(), middleware.ActorID(r.Context()), id, body.Version, body.Reason, key)
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
 	response.JSON(w, r, http.StatusOK, orderView(item))
+}
+func orderCommandKey(w http.ResponseWriter, r *http.Request) (string, bool) {
+	keys := r.Header.Values("Idempotency-Key")
+	if len(keys) != 1 || !dto.Identifier(keys[0]) {
+		writeError(w, r, &dto.ValidationError{Message: "Satu Idempotency-Key dengan format ID yang sah wajib diisi."})
+		return "", false
+	}
+	return keys[0], true
+}
+func (h *Handler) OrderHistory(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	values, err := query(r, "limit", "offset")
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	p, err := page(values)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	items, err := h.use.Orders.History(r.Context(), middleware.ActorID(r.Context()), id, p)
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	result := make([]dto.OrderStatusEventResponse, 0, len(items))
+	for _, e := range items {
+		result = append(result, dto.OrderStatusEventResponse{Version: e.Version, From: string(e.From), To: string(e.To), ActorID: e.ActorID, OccurredAt: e.OccurredAt, Source: e.Source})
+	}
+	response.JSON(w, r, http.StatusOK, result)
 }
 func (h *Handler) RecordPayment(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r)

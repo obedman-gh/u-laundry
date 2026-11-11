@@ -54,6 +54,7 @@ func protected(t *testing.T, method, path, body string, fn http.HandlerFunc) *ht
 	if body != "" {
 		r.Header.Set("Content-Type", "application/json")
 	}
+	r.Header.Set("Idempotency-Key", "command-test")
 	r.SetPathValue("id", "order-1")
 	w := httptest.NewRecorder()
 	middleware.New(nil, manager).ValidasiJWT(fn).ServeHTTP(w, r)
@@ -82,7 +83,7 @@ func TestCreateOrderDelegatesAndRejectsUntrustedTotals(t *testing.T) {
 		if actor != "actor-1" || in.CustomerID != "c-1" || len(in.Items) != 1 || in.Items[0].Quantity.Grams != 2500 {
 			t.Fatal("request/identity not delegated")
 		}
-		return service.CreatedOrder{Order: o, TrackingToken: "one-time-token"}, nil
+		return service.CreatedOrder{Order: o, TrackingToken: "one-time-token", Version: 1}, nil
 	}}})
 	w := protected(t, "POST", "/api/pesanan", `{"customer_id":"c-1","items":[{"service_id":"s-1","grams":2500}]}`, h.BikinPesananBaru)
 	if w.Code != http.StatusCreated || !strings.Contains(w.Body.String(), `"total_biaya":17500`) || !strings.Contains(w.Body.String(), `"tracking_token":"one-time-token"`) {

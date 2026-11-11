@@ -24,6 +24,7 @@ type endpointRecorder struct {
 	name string
 	id   string
 }
+func (e *endpointRecorder) OrderHistory(w http.ResponseWriter,r *http.Request){e.record("history",w,r)}
 
 func (e *endpointRecorder) record(name string, w http.ResponseWriter, r *http.Request) {
 	e.name, e.id = name, r.PathValue("id")

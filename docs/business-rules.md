@@ -1,15 +1,15 @@
-# Aturan domain laundry — Hari 05
+# Aturan domain laundry — Hari 12
 
 `internal/domain` adalah aturan bisnis Go murni, memakai standard library. Repository hari 06 dan service/HTTP hari 07 sudah tersambung; lihat [architecture.md](architecture.md). Server domain menghitung total katalog, memisahkan payment/status dan memeriksa actor/version/audit pada use case. DTO `models/` dan data legacy tetap di repository sebagai artefak transisi, tetapi tidak dibaca handler/server baru. Import data dan bootstrap akun belum dilakukan; lihat [api.md](api.md) sebelum memakai client lama.
 
-Aturan berikut sudah dipakai kode server baru, tetapi belum diterapkan ke data operasional: gram sebagai presisi berat, pembulatan per baris, diskon nominal owner/admin, DP diperbolehkan, pengambilan harus lunas, dan pembatalan hanya sebelum siap serta tanpa pembayaran. Cancel/configuration/report hanya owner/admin; cashier dapat operasi umum. Tinjau kebijakan ini sebelum cutover nyata. Minimum kg/tarif, diskon persentase/promo, kredit pelanggan dan refund belum disepakati/dibangun.
+Aturan berikut sudah dipakai kode server baru, tetapi belum diterapkan ke data operasional: gram sebagai presisi berat, pembulatan per baris, diskon nominal owner/admin, DP diperbolehkan, pengambilan harus lunas, dan pembatalan hanya sebelum siap serta tanpa pembayaran. Cancel/configuration/report hanya owner/admin; cashier dapat operasi umum. Kebijakan existing dipertahankan: minimum berat 1 gram, minimum jumlah 1 item, harga dan total minimum Rp0; tidak ada minimum tagihan/kg tambahan. Tinjau sebelum cutover nyata. Diskon persentase/promo, kredit pelanggan dan refund belum dibangun.
 
 ## Model dan tanggung jawab
 
 | Model | Isi dan aturan utama |
 |---|---|
 | `Customer` | ID, nama, kontak opsional, catatan, created/updated time; kontak kosong untuk pelanggan datang langsung |
-| `Service` | ID/nama, satuan kg atau piece, harga per satuan, durasi pengerjaan positif, aktif, timestamps |
+| `Service` | ID/nama, satuan kg atau item (storage `piece`), harga per satuan, durasi pengerjaan positif, aktif, urutan tampilan, timestamps; repository membawa version |
 | `Order` | Snapshot pelanggan/item/harga/diskon, total terhitung, status operasional, estimasi/milestone, penerima dan pembayaran tercatat; field internal dilindungi |
 | `OrderItem` | Snapshot ID/nama/satuan/harga layanan, gram atau jumlah satuan, total baris terhitung; perubahan katalog tidak mengubah order lama |
 | `Payment` | Penerimaan pembayaran positif: order ID, metode manual, pencatat/waktu, ID dan idempotency key; bukan transaksi gateway pending |
@@ -42,13 +42,23 @@ Status awal selalu `received`, ditentukan domain. Transisi mundur, lompatan, sta
 
 - `Money` adalah int64 **rupiah utuh**, 0..9.223.372.036.854.775.807; tidak ada float. Harga/order boleh nol, pembayaran dan posting ledger baru harus > 0. Arah kas diwakili tipe, bukan tanda negatif.
 - `Quantity` berisi tepat salah satu dari `Pieces > 0` atau `Grams > 0`, sesuai satuan katalog; kg disimpan dalam gram. 2,5 kg = 2500 gram. Field alternatif wajib nol; jumlah nol/negatif/campuran ditolak.
-- Tarif per piece: `harga × jumlah`. Tarif per kg: `harga × gram / 1000`, dibulatkan ke rupiah terdekat per baris, pecahan 0,5 ke atas. Tidak ada pembulatan berat/minimum kg tersembunyi. Konversi input kg desimal ke gram integer harus dilakukan secara eksak oleh DTO/boundary mendatang, bukan melalui float.
+- Tarif per item (storage piece): `harga × jumlah`. Tarif per kg: `harga × gram / 1000`, dibulatkan ke rupiah terdekat per baris, pecahan 0,5 ke atas. Tidak ada pembulatan berat/minimum kg tersembunyi. API menerima gram integer, bukan kg desimal/float.
 - Contoh: 7000 × 2500/1000 = Rp17.500. Tarif 7005/kg dengan 100 gram = Rp700,5 → Rp701. Dua baris masing-masing 0,5 rupiah menjadi subtotal Rp2; pembulatan dilakukan sebelum penjumlahan, bukan di akhir order.
 - Subtotal menjumlahkan total baris dengan pemeriksaan overflow; total = subtotal − diskon. Perhitungan perkalian/penjumlahan menolak overflow int64, termasuk subtotal dari baris yang masing-masing masih valid. Kalkulasi gram menghindari overflow perantara ketika hasil akhir masih muat.
 - Diskon hanya nominal per order: 0..subtotal. Diskon > 0 memerlukan alasan 1–250 karakter dan actor owner/admin aktif; ID pemberi persetujuan disimpan. Cashier tidak dapat memberi diskon sendiri. Diskon penuh sah dengan persetujuan; diskon negatif/melebihi subtotal ditolak, tidak di-clamp. Belum ada diskon item/persen/kupon/stacking.
 - Pesanan berisi 1–100 item. Layanan harus ditemukan, valid dan aktif. ID katalog berulang ditolak. Item berulang diperbolehkan sebagai baris terpisah dan mengikuti pembulatan per baris.
 
-`NewOrderInput` tidak menyediakan harga, line total, subtotal, total, paid amount atau status dari klien. `ItemRequest` hanya service ID dan quantity. **Service mendatang wajib mengambil customer/katalog/actor dari sumber tepercaya**, lalu memanggil `NewOrder`; jangan decode body HTTP menjadi `Service`/`Staff` dan mempercayainya. Actor diskon bukan data role yang dipilih frontend. Harga snapshot hasil domain yang disimpan, bukan total request.
+`NewOrderInput` tidak menyediakan harga, line total, subtotal, total, paid amount atau status dari klien. `ItemRequest` hanya service ID dan quantity. Use case Orders mengambil customer/katalog/actor dari repository, lalu memanggil `NewOrder`; body HTTP tidak menjadi `Service`/`Staff` tepercaya. Actor diskon bukan data role yang dipilih frontend. Harga snapshot hasil domain yang disimpan, bukan total request.
+
+## Katalog dan histori harga — Tindakan — Hasil
+
+- Pengelolaan — owner/admin membuat atau mengubah nama, satuan kg/item, harga rupiah utuh, estimasi menit positif, status aktif dan urutan 0–1.000.000 melalui `/services.html` atau API. Harga wajib dikirim eksplisit, termasuk Rp0; field hilang/null ditolak. API menerima alias `piece` untuk kompatibilitas, respons memakai `item`. Durasi API maksimal 153.722.867 menit agar konversi ke time.Duration tidak overflow. Urutan default 0; daftar diurutkan menurut display_order, name, id.
+- Otorisasi — cashier hanya dapat membaca daftar aktif; daftar termasuk nonaktif, detail katalog, histori dan mutasi hanya owner/admin. Tidak ada hapus layanan; nonaktifkan untuk menghentikan pemakaian baru tanpa menghilangkan referensi order/histori.
+- Revisi — setiap konfigurasi sukses mencatat seluruh nilai layanan, versi, actor dan waktu bersama audit `service_configured` dalam transaksi yang sama. UPDATE/DELETE histori ditolak trigger; `(service_id, version)` unik. Kegagalan revisi/audit/commit tidak mengembalikan konfigurasi sukses. Versi stale menjadi konflik, bukan overwrite.
+- Harga existing — migration 000008 menambahkan urutan dan satu baseline pada versi yang sedang tersimpan. Baseline hanya keadaan pertama yang diamati; harga sebelum baseline tidak direkonstruksi. `source=staff` memiliki changed_by; baseline/demo tanpa actor. Histori tidak menyimpan profil atau kontak pelanggan.
+- Snapshot — order_items menyimpan service_id, service_name, unit, unit_price, pieces/grams dan line_total; orders menyimpan subtotal, discount, alasan/pemberi persetujuan, total dan estimasi. Pembacaan/struk memvalidasi snapshot tersimpan tanpa menghitung ulang dari katalog. Perubahan nama/satuan/harga/durasi/nonaktif tidak mengubah order lama.
+- Konkurensi — order mengunci layanan menurut ID terurut sebelum menghitung snapshot; konfigurasi mengunci row yang sama dengan expected version. Order yang sudah memegang lock memakai harga saat itu; editor menunggu commit. Order setelah editor commit memakai nilai baru. Semua snapshot dan audit order disimpan atomik.
+- Data contoh — `scripts/catalog-demo.sql` terpisah dari migration, hanya membuat tiga layanan sintetis dan revisi demo, tanpa akun, kredensial, pelanggan atau transaksi. Script menolak database tanpa akhiran `_demo`, schema selain versi 8, data bisnis existing dan pemanggilan ulang. `scripts/demo.sql` lama khusus tabel legacy, bukan seed server domain.
 
 ## Validasi data dan waktu
 
@@ -66,7 +76,7 @@ Status awal selalu `received`, ditentukan domain. Transisi mundur, lompatan, sta
 
 Penolakan duplicate domain sendiri adalah guard **in-memory**. Adapter memakai row lock dan unique key; service hari 07 memuat actor/order tepercaya, mengunci sebelum replay, memvalidasi pembayaran dan menyertakan audit hanya untuk posting baru pada transaksi yang sama. Runtime baru menggunakan boundary ini; data legacy tidak diimpor atau di-dual-write. Kegagalan audit membatalkan payment/ledger, dibuktikan melalui satu alur PostgreSQL terisolasi. Jangan memanggil generator ledger atas Payment yang belum diterima order.
 
-Audit action yang tersedia: order_created, order_status_changed, payment_recorded, discount_approved, customer_updated, service_updated, staff_updated; masing-masing hanya cocok dengan jenis entity terkait. ID/time wajib. Append-only storage, audit saat commit, request correlation dan audit login/security masih pekerjaan service/audit berikutnya. Tidak ada janji domain memverifikasi eksistensi ID referensi tanpa repository.
+Audit katalog memakai service_configured pada entity service, dalam transaksi yang sama dengan konfigurasi dan revisi. Audit order/payment/customer/staf tetap memakai aksi domain terkontrol; daftar lengkap mengikuti internal/domain/audit.go dan [api.md](api.md). ID/time wajib; UPDATE/DELETE audit diblokir storage. Event autentikasi tersedia terpisah di auth_events. Tidak ada janji domain memverifikasi eksistensi ID referensi tanpa repository.
 
 ## Error domain
 
@@ -80,7 +90,7 @@ Audit action yang tersedia: order_created, order_status_changed, payment_recorde
 | `discount_approval_required`, `staff_inactive` | Actor tidak diperbolehkan |
 | `payment_required`, `payment_exists`, `overpayment`, `duplicate_payment` | Syarat pembayaran tidak terpenuhi |
 
-Pemetaan Kind ke respons HTTP dilakukan di handler/boundary hari berikutnya; jangan mengirim object domain/credential langsung sebagai JSON atau menaruh error driver di error domain.
+Handler/boundary memetakan Kind ke respons HTTP aman; lihat [api.md](api.md). Jangan mengirim object domain/credential langsung sebagai JSON atau menaruh error driver di error domain.
 
 ## Kompatibilitas dan pekerjaan berikutnya
 

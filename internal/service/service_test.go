@@ -29,6 +29,8 @@ type fakeState struct {
 	tracking         map[[32]byte]string
 	audits           []domain.AuditEvent
 	revisions        []repository.ServiceRevision
+	commands         map[string]repository.OrderCommandReceipt
+	statusEvents     []domain.OrderStatusEvent
 	totals           repository.LedgerTotals
 	period           ReportPeriod
 	filter           repository.OrderFilter
@@ -54,6 +56,8 @@ func (s *fakeState) clone() *fakeState {
 	c.tracking = copyMap(s.tracking)
 	c.audits = append([]domain.AuditEvent(nil), s.audits...)
 	c.revisions = append([]repository.ServiceRevision(nil), s.revisions...)
+	c.commands = copyMap(s.commands)
+	c.statusEvents = append([]domain.OrderStatusEvent(nil), s.statusEvents...)
 	return &c
 }
 
@@ -306,7 +310,7 @@ func requireDomain(t *testing.T, err error, kind domain.ErrorKind, code string) 
 	}
 }
 func orderInput() OrderInput {
-	return OrderInput{CustomerID: "customer-1", Items: []domain.ItemRequest{{ServiceID: "wash", Quantity: domain.Quantity{Grams: 2500}}}, Discount: 500, DiscountReason: "Penyesuaian layanan"}
+	return OrderInput{IdempotencyKey: "create-test", CustomerID: "customer-1", Items: []domain.ItemRequest{{ServiceID: "wash", Quantity: domain.Quantity{Grams: 2500}}}, Discount: 500, DiscountReason: "Penyesuaian layanan"}
 }
 
 func TestCreateOrderAuthoritativeCalculationAndAudit(t *testing.T) {
@@ -470,31 +474,31 @@ func TestTransitionsCancellationAndStaleState(t *testing.T) {
 	ctx := context.Background()
 	u, rt := fixture(t, domain.Owner)
 	s := NewOrders(u, rt)
-	_, err := s.ChangeStatus(ctx, "actor-1", "order-1", domain.Ready, 1)
+	_, err := s.ChangeStatus(ctx, "actor-1", "order-1", domain.Ready, 1, "invalid-key")
 	requireDomain(t, err, domain.Conflict, "invalid_transition")
 	if u.state.orders["order-1"].Order.Status() != domain.Received || len(u.state.audits) != 0 {
 		t.Fatal("forbidden transition saved")
 	}
-	r, err := s.ChangeStatus(ctx, "actor-1", "order-1", domain.Processing, 1)
+	r, err := s.ChangeStatus(ctx, "actor-1", "order-1", domain.Processing, 1, "process-key")
 	if err != nil || r.Version != 2 {
 		t.Fatal(err)
 	}
-	_, err = s.ChangeStatus(ctx, "actor-1", "order-1", domain.Ready, 1)
+	_, err = s.ChangeStatus(ctx, "actor-1", "order-1", domain.Ready, 1, "stale-key")
 	requireDomain(t, err, domain.Conflict, "stale_order")
-	_, err = s.ChangeStatus(ctx, "actor-1", "order-1", domain.Cancelled, 2)
+	_, err = s.ChangeStatus(ctx, "actor-1", "order-1", domain.Cancelled, 2, "invalid-cancel")
 	requireDomain(t, err, domain.Validation, "")
-	r, err = s.Cancel(ctx, "actor-1", "order-1", 2, "Permintaan pelanggan")
+	r, err = s.Cancel(ctx, "actor-1", "order-1", 2, "Permintaan pelanggan", "cancel-key")
 	if err != nil || r.Order.Status() != domain.Cancelled || u.state.audits[len(u.state.audits)-1].Action != domain.OrderCancelled {
 		t.Fatal("cancel", err)
 	}
 	u, rt = fixture(t, domain.Cashier)
-	_, err = NewOrders(u, rt).Cancel(ctx, "actor-1", "order-1", 1, "Permintaan pelanggan")
+	_, err = NewOrders(u, rt).Cancel(ctx, "actor-1", "order-1", 1, "Permintaan pelanggan", "forbidden-cancel")
 	requireDomain(t, err, domain.Forbidden, "forbidden")
 	for _, op := range []string{"lock_order", "save_progress", "audit"} {
 		t.Run(op, func(t *testing.T) {
 			u, rt := fixture(t, domain.Owner)
 			u.failAt = op
-			_, err := NewOrders(u, rt).ChangeStatus(ctx, "actor-1", "order-1", domain.Processing, 1)
+			_, err := NewOrders(u, rt).ChangeStatus(ctx, "actor-1", "order-1", domain.Processing, 1, "process-key")
 			if !errors.Is(err, failure) || u.state.orders["order-1"].Version != 1 || u.state.orders["order-1"].Order.Status() != domain.Received {
 				t.Fatal("status failure committed", err)
 			}

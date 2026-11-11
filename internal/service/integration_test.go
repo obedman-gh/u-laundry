@@ -94,7 +94,7 @@ func TestPostgresPaymentUseCaseAtomicity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(after) != 8 || after[3].AppliedAt == nil {
+	if len(after) != 9 || after[3].AppliedAt == nil {
 		t.Fatal("workflow migration missing")
 	}
 	for i := 0; i < 3; i++ {
@@ -129,7 +129,7 @@ func TestPostgresPaymentUseCaseAtomicity(t *testing.T) {
 	if err != nil || v.Version != 2 {
 		t.Fatal("catalog update/version", err)
 	}
-	o, err := NewOrders(base, rt).Create(ctx, actor.ID, OrderInput{CustomerID: c.ID, Items: []domain.ItemRequest{{ServiceID: v.Service.ID, Quantity: domain.Quantity{Grams: 2500}}}, Discount: 500, DiscountReason: "Penyesuaian"})
+	o, err := NewOrders(base, rt).Create(ctx, actor.ID, OrderInput{IdempotencyKey: "integration-create", CustomerID: c.ID, Items: []domain.ItemRequest{{ServiceID: v.Service.ID, Quantity: domain.Quantity{Grams: 2500}}}, Discount: 500, DiscountReason: "Penyesuaian"})
 	if err != nil || o.Order.Total() != 17000 {
 		t.Fatal("order calculation", err)
 	}

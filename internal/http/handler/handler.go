@@ -26,8 +26,9 @@ type CatalogUseCase interface {
 type OrderUseCase interface {
 	RotateTracking(context.Context, string, string, int64) (service.RotatedTracking, error)
 	Create(context.Context, string, service.OrderInput) (service.CreatedOrder, error)
-	ChangeStatus(context.Context, string, string, domain.OrderStatus, int64) (repository.OrderRecord, error)
-	Cancel(context.Context, string, string, int64, string) (repository.OrderRecord, error)
+	ChangeStatus(context.Context, string, string, domain.OrderStatus, int64, string) (repository.OrderRecord, error)
+	Cancel(context.Context, string, string, int64, string, string) (repository.OrderRecord, error)
+	History(context.Context, string, string, repository.Page) ([]domain.OrderStatusEvent, error)
 	Get(context.Context, string, string) (repository.OrderRecord, error)
 	List(context.Context, string, repository.OrderFilter) ([]service.OrderListItem, error)
 }

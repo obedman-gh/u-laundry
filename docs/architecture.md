@@ -91,3 +91,9 @@ Migration 000005 menambah staff_sessions/auth_events dan trigger pencabutan keti
 - Customers — create/get/search/update lewat use case dan port repository; edit memakai row lock/version serta customer_updated audit atomik. Alamat hanya pada profil, snapshot order existing tetap. UI HTML/JavaScript sederhana tanpa dependency baru.
 - Tracking — domain memusatkan parsing hash, kode tampilan, pesan status dan lifetime. Lookup menerima waktu clock use case untuk filter expires_at di PostgreSQL; projection SQL hanya status/estimasi. Rotasi Orders memakai order lock, expected version, penggantian hash unik dan audit dalam satu transaksi. Tidak ada jalur public receipt atau ID order publik.
 - Kontrak — projection publik kini tracking_code/status/estimated_ready_at/message; milestone ready_at/collected_at dihapus. NewTracking menerima Runtime untuk clock terinjeksi. Migration 000007 dan aturan rollback dibahas di [privacy.md](privacy.md).
+
+## Hari 12 — Tindakan — Hasil
+
+- Catalog — create/update/list/detail/history menggunakan repository ports; owner/admin mengelola semua konfigurasi dan cashier membaca daftar aktif. Mutasi memakai row lock/version, insert revisi penuh dan audit atomik. Harga HTTP wajib eksplisit termasuk Rp0; satuan publik item dipetakan ke storage piece untuk mempertahankan snapshot existing.
+- Orders — layanan dikunci menurut ID terurut sebelum domain menghitung snapshot nama/satuan/harga/jumlah/total baris serta subtotal/diskon/total. Lock yang sama menserialkan penerimaan order terhadap editor harga. Rehidrasi detail/struk memakai snapshot order, bukan join harga katalog terbaru.
+- Storage — migration 000008 menambahkan urutan dan histori append-only dengan baseline. Tidak ada penyalinan ulang order, perubahan ledger atau seed dalam migration. Seed demo terpisah dari migration. Kebijakan kalkulasi ada di [business-rules.md](business-rules.md), kontrak di [api.md](api.md), upgrade/rollback di [database.md](database.md).
