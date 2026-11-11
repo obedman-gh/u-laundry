@@ -1,6 +1,6 @@
 # ULaundry POS & Management System
 
-ULaundry adalah aplikasi operasional laundry di Perumahan Viola milik Obed Erwin Manambe. Stack: Go (`net/http`), PostgreSQL, HTML, CSS, dan JavaScript tanpa framework frontend besar.
+ULaundry adalah aplikasi operasional laundry. Stack: Go (`net/http`), PostgreSQL, HTML, CSS, dan JavaScript tanpa framework frontend besar.
 
 Status per 11 November 2026: **katalog layanan, histori harga dan snapshot order tahap 12 tersedia, belum layak produksi**. Lihat [arsitektur](docs/architecture.md), [kontrak API dan perubahan kompatibilitas](docs/api.md), [aturan bisnis](docs/business-rules.md), [database](docs/database.md), [audit baseline](docs/audit-baseline.md), [kriteria penerimaan](docs/acceptance-criteria.md), [backlog](docs/backlog-30-days.md), [laporan hari 12](docs/progress/day-12.md) dan [keamanan autentikasi](docs/security.md).
 
