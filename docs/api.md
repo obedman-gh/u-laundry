@@ -1,6 +1,6 @@
-# Kontrak HTTP API — hari 12
+# Kontrak HTTP API — hari 13
 
-Server memakai storage domain hingga migration 000008 dan autentikasi existing. Ini perubahan kontrak dari handler legacy: tidak menerima total/harga/status klien saat create order; data/akun pesanan-kasir-keuangan lama belum diimpor. Jangan aktifkan pada data operasional sebelum mapping, backup/restore dan rekonsiliasi; lihat [architecture.md](architecture.md).
+Server memakai storage domain hingga migration 000009 dan autentikasi existing. Ini perubahan kontrak dari handler legacy: tidak menerima total/harga/status klien saat create order; data/akun pesanan-kasir-keuangan lama belum diimpor. Jangan aktifkan pada data operasional sebelum mapping, backup/restore dan rekonsiliasi; lihat [architecture.md](architecture.md).
 
 Semua body JSON memakai satu Content-Type application/json (charset UTF-8 opsional), maksimal 64 KiB termasuk whitespace, satu objek UTF-8 dan tanpa field asing. Content-Encoding selain identity atau header encoding berulang ditolak. Field duplikat, termasuk escape/alias kapitalisasi dan objek item bersarang, ditolak sebelum use case dipanggil. Rupiah dan gram/jumlah berupa integer. Cookie sesi HttpOnly diperlukan selain login/health/tracking. Bearer/localStorage tidak diterima lagi. JWT memerlukan HS256, issuer/audience/iat/exp/sub/username/role/jti dan registrasi sesi PostgreSQL; role/active tetap dimuat ulang setiap use case. Mutasi privat memerlukan X-CSRF-Token dan Origin persis PUBLIC_BASE_URL; login memerlukan Origin tersebut tanpa sesi awal. Owner pertama dibuat dengan command bootstrap-owner pada tabel staff kosong; staf berikutnya dikelola owner melalui API/UI. Utilitas setup-kasir lama hanya menyentuh tabel legacy dan bukan jalur akun domain.
 
@@ -20,13 +20,14 @@ Semua body JSON memakai satu Content-Type application/json (charset UTF-8 opsion
 | GET /api/services/{id}/history | Owner/admin; revisi lengkap, limit/offset, versi terbaru dahulu |
 | POST /api/services | Owner/admin; name/unit/unit_price/turnaround_minutes/active/display_order → konfigurasi/service_id/version |
 | PUT /api/services/{id} | Owner/admin; field konfigurasi + expected `version`; snapshot order lama tetap |
-| POST /api/pesanan | CustomerID/item/discount/notes/estimasi → order, tracking_token sekali, tracking_expires_at |
+| POST /api/pesanan | customer_id/items/discount/notes/estimasi + Idempotency-Key wajib → order, tracking_token sekali, tracking_expires_at; retry identik 200 |
 | GET /api/pesanan | Staf; limit/offset/status/customer_id, array ringkasan kompatibel field daftar lama |
 | GET /api/pesanan/status?q=processing | Alias deprecated; q wajib status domain, pagination sama; penerus GET /api/pesanan?status=processing |
 | GET /api/pesanan/{id} | Staf; satu objek detail termasuk version; **tidak publik lagi** |
 | GET /api/pesanan/{id}/struk | Staf; HTML escaped untuk print; **tidak publik lagi** |
-| PUT /api/pesanan/{id} | Staf; status dan expected version; bukan mencatat pembayaran |
-| POST /api/pesanan/{id}/cancel | Owner/admin; version/reason; belum ada pembayaran |
+| GET /api/pesanan/{id}/history | Staf; riwayat status privat, limit/offset, version menurun |
+| PUT /api/pesanan/{id} | Staf; status dan expected version + Idempotency-Key wajib; bukan mencatat pembayaran |
+| POST /api/pesanan/{id}/cancel | Owner/admin; version/reason + Idempotency-Key wajib; belum ada pembayaran |
 | POST /api/pesanan/{id}/pembayaran | Staf; amount/method + header Idempotency-Key wajib |
 | GET /api/tracking/{token} | Publik capability belum expired; tepat tracking_code/status/estimated_ready_at/message |
 | POST /api/pesanan/{id}/tracking | Staf aktif + CSRF; {version} -> tracking_token/tracking_expires_at/version; mencabut token lama |
@@ -46,7 +47,7 @@ Contoh create order (ID layanan/customer dari respons create/configure):
 
 Layanan kg memakai grams; item memakai pieces, field lain nol. Estimasi boleh tidak dikirim dan dihitung dari durasi katalog. ID order, nama customer, harga, total dan status bukan field bebas dari request; customer_id menunjuk customer yang sudah tersimpan. Diskon nominal memerlukan owner/admin dan discount_reason. Total response dihitung server. Contoh update progres: `{"status":"processing","version":1}`. Lima status: received → processing → ready → collected, received/processing dapat cancelled melalui endpoint cancel. Pengambilan harus lunas. Estimasi dan batas periode laporan dinormalisasi UTC/mikrodetik; periode yang menjadi kosong setelah normalisasi ditolak.
 
-Pembayaran: `{"amount":10000,"method":"cash"}` dengan Idempotency-Key yang dibuat klien dan dipakai kembali hanya untuk payload bisnis sama. Metode manual cash/bank_transfer/qris, tanpa gateway. Replay mengembalikan payment_id/amount yang sama dan replayed=true; tidak menambah ledger/audit. Status `Sudah Lunas` lama tidak diterima sebagai status operasional. Create order belum idempotent; jangan retry buta setelah commit dengan hasil jaringan tidak diketahui.
+Pembayaran: `{"amount":10000,"method":"cash"}` dengan Idempotency-Key yang dibuat klien dan dipakai kembali hanya untuk payload bisnis sama. Metode manual cash/bank_transfer/qris, tanpa gateway. Replay mengembalikan payment_id/amount yang sama dan replayed=true; tidak menambah ledger/audit. Status `Sudah Lunas` lama tidak diterima sebagai status operasional. Retry create/status/cancel mengikuti kontrak command di bawah; create customer belum idempotent.
 
 Pagination limit default 20/maksimum 100, offset minimal 0. Detail sekarang satu objek, bukan array satu elemen. Ringkasan tetap id_pesanan/nama_customer/layanan/total_biaya/status untuk halaman daftar yang ada, ditambah payment_status/version. Nilai status sekarang kode domain; update frontend lengkap/diskon/POS belum dibuat. Konsumen JavaScript harus memperhatikan batas integer aman saat menangani nominal BIGINT besar; seluruh kalkulasi server tetap int64.
 
@@ -71,6 +72,17 @@ Pagination limit default 20/maksimum 100, offset minimal 0. Detail sekarang satu
 - Order — hanya menerima service_id dan grams/pieces integer positif tepat satu per baris. kg minimal 1 gram, item minimal 1 buah; tidak ada minimum berat/tagihan tambahan. Server memuat dan mengunci layanan aktif, menghitung line_total dengan pembulatan half-up per baris, lalu subtotal = jumlah line_total dan total = subtotal − discount. Diskon 0..subtotal, nominal positif hanya owner/admin dengan alasan; minimum total Rp0, tanpa payment/ledger nol. Layanan nonaktif ditolak 409; satuan/jumlah tidak cocok, diskon tidak sah atau hasil overflow ditolak 400.
 - Snapshot — POST order pada field order dan GET detail menyertakan items berisi service_id/service_name/unit/unit_price/pieces/grams/line_total serta subtotal, discount dan total_biaya. Daftar ringkasan tidak menyertakan rincian item. Nama/satuan/harga/jumlah dan subtotal/diskon/total diambil dari snapshot tersimpan saat membaca detail/struk; perubahan katalog tidak menghitung ulang order lama. Contoh Rp7.005/kg × 100 gram → Rp701; diskon Rp1 → total_biaya Rp700. Setelah harga Rp8.000/kg berlaku, order baru yang sama menjadi Rp799, order lama tetap Rp700.
 - Transaksi — konfigurasi, revisi dan audit atomik; order mengunci layanan menurut ID terurut sehingga edit harga menunggu snapshot order yang sedang diterima. Order baru setelah commit edit memakai harga baru. Tidak ada endpoint mengubah total order lama melalui konfigurasi layanan.
+
+## Command order dan riwayat hari 13
+
+POST order, PUT status dan POST cancel memerlukan tepat satu `Idempotency-Key` berformat ID (1–100 karakter ASCII alfanumerik/titik/underscore/hyphen). Header hilang, kosong, berulang atau tidak sah mendapat 400 sebelum use case. Key dibuat klien sebelum submit; simpan key dan payload semula untuk retry akibat timeout/network. Key baru hanya untuk intent baru. Client lama tanpa header ini perlu diperbarui.
+
+- Scope unik `(actor_id, key)` dibagi oleh create/status/cancel. Key yang sama dengan operasi/order/payload/expected version berbeda mendapat 409 `conflict`. Payment memakai scope terpisah `(order_id, key)`. Otorisasi staf terkini tetap diperiksa pada replay; key bukan credential.
+- Create pertama 201, replay 200, keduanya `Location: /api/pesanan/{id}`. Respons berisi `order` dan `replayed`; `order.applied_version=1`, `order.version` adalah versi terkini. Pada replay, flag `replayed=true` juga ada di dalam order. Token/expiry hanya saat create pertama; replay tidak mengembalikan capability atau membuat token baru. Jika respons pertama hilang, gunakan endpoint rotasi tracking terautentikasi dengan versi terkini.
+- Status/cancel sukses 200 dengan order, `applied_version` versi hasil command, dan `version` versi terkini. Replay tidak mengulang transisi/audit/milestone; jika order kemudian sudah berubah, respons tetap menunjukkan keadaan terkini, bukan snapshot respons lama. Semua key sukses tersimpan tanpa expiry otomatis.
+- Key baru dengan expected version lama mendapat 409 `conflict`. Muat ulang detail, tinjau keadaan terkini, lalu kirim intent baru dengan key baru dan versi yang baru dibaca. Jangan otomatis mengganti versi pada retry command lama. Payment dan rotasi tracking juga menaikkan versi order tanpa menjadi perubahan status laundry.
+- GET `/api/pesanan/{id}/history?limit=20&offset=0` privat dan no-store. Array versi menurun berisi `version`, `to_status`, `occurred_at`, `source`; `from_status` dan `actor_id` hanya bila tersedia. Array kosong `[]`, resource tidak ada 404, pagination invalid 400, tanpa sesi 401. Source staff mencatat create/transisi yang commit. Source baseline mencatat status/version/updated_at saat upgrade, tanpa mengarang actor/transisi historis; nomor versi dapat melompati payment/rotasi.
+- Detail order menyertakan `processing_at`, `waktu_selesai_real`, `collected_at`, `cancelled_at`, nullable. Data sebelum migration 9 dapat memiliki processing_at null meskipun sudah diproses/siap/diambil. Perubahan status dan payment memakai lock order yang sama; status laundry tidak mem-posting ledger.
 
 ## Error dan correlation ID
 
@@ -99,7 +111,7 @@ Semua kegagalan endpoint API memakai bentuk berikut, termasuk JWT/CORS, 404, met
 | 503 | service_unavailable / health_unavailable | Repository atau health dependency tidak tersedia |
 | 504 | deadline_exceeded | Context deadline habis |
 
-Message domain/repository/driver, stack trace, nilai panic, password/hash dan input ditolak tidak disalin ke error. Error tidak menjamin operasi belum commit bila respons jaringan gagal; khususnya create order/customer belum idempotent. Panic setelah header dikirim membatalkan koneksi memakai ErrAbortHandler, tidak menulis JSON kedua atau mengubah sukses yang sudah dikirim. Error parsing pada protokol HTTP oleh net/http/proxy dan redirect normalisasi URL bukan respons endpoint JSON.
+Message domain/repository/driver, stack trace, nilai panic, password/hash dan input ditolak tidak disalin ke error. Error tidak menjamin operasi belum commit bila respons jaringan gagal; gunakan key dan payload semula untuk retry order/payment. Create customer belum idempotent. Panic setelah header dikirim membatalkan koneksi memakai ErrAbortHandler, tidak menulis JSON kedua atau mengubah sukses yang sudah dikirim. Error parsing pada protokol HTTP oleh net/http/proxy dan redirect normalisasi URL bukan respons endpoint JSON.
 
 ## Request, route dan kompatibilitas
 

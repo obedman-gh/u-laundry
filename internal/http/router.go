@@ -11,7 +11,7 @@ import (
 
 // Endpoints allows routing to be checked independently of SQL and bootstrap.
 type Endpoints interface {
-	OrderHistory(http.ResponseWriter,*http.Request)
+	OrderHistory(http.ResponseWriter, *http.Request)
 	ListServices(http.ResponseWriter, *http.Request)
 	GetService(http.ResponseWriter, *http.Request)
 	ServiceHistory(http.ResponseWriter, *http.Request)

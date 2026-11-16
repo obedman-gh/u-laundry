@@ -1,6 +1,6 @@
 # Backlog 30 Hari ULaundry
 
-Baseline 7 November 2026, commit `94ffc77`. Acuan urutan/scope: `F:\project\ulaundry\PROMPTS_30_HARI_ULaundry_PRODUCTION.md`; instruksi kerja: `../AGENTS.md` dari root repository. Hari adalah urutan pekerjaan, bukan janji selesai pada tanggal kalender. Hari 01–10 sudah diimplementasikan, dengan bukti pada `docs/progress/day-01.md` sampai `day-10.md`; hari 11–30 **belum dikerjakan**. H09 (build), H04 (startup config), H11 (CORS/preflight), migration/domain/repository dan service aktif memiliki bukti terarah. Ini belum membuktikan import/cutover/konfigurasi production atau menutup acceptance security/UI/operasional; lihat batas implementasi berikut.
+Baseline 7 November 2026, commit `94ffc77`. Acuan urutan/scope: `F:\project\ulaundry\PROMPTS_30_HARI_ULaundry_PRODUCTION.md`; instruksi kerja: `../AGENTS.md` dari root repository. Hari adalah urutan pekerjaan, bukan janji selesai pada tanggal kalender. Hari 01–13 sudah diimplementasikan, dengan bukti pada `docs/progress/day-01.md` sampai `day-13.md`; hari 14–30 **belum dituntaskan**. H09 (build), H04 (startup config), H11 (CORS/preflight), migration/domain/repository dan service aktif memiliki bukti terarah. Ini belum membuktikan import/cutover/konfigurasi production atau menutup acceptance security/UI/operasional; lihat batas implementasi berikut.
 
 Pembaruan hari 07: service terpisah sudah di-wire ke handler/root, dengan clock/ID/token injection, authorization intent dan audit atomik. Handler bebas SQL/transaksi; payment/status terpisah dan total katalog server aktif pada tabel domain. Unit fake dan satu alur payment-ledger-audit PostgreSQL lulus. Catatan hari 07 ini dipertahankan sebagai ringkasan workflow; status terbaru mengikuti pembaruan hari 10. Import/cutover/akun legacy belum ditangani; auth/session/UI/operasional/release acceptance masih wajib. Lihat [architecture.md](architecture.md) dan [laporan hari 07](progress/day-07.md).
 
@@ -8,7 +8,11 @@ Pembaruan hari 08: partial HTTP yang sudah ada dituntaskan dengan error JSON ber
 
 Pembaruan hari 09: autentikasi memakai cookie HttpOnly, PostgreSQL sessions dan audit anonim, CSRF/logout/revocation, claims HS256/issuer/audience/iat/exp/identity-role serta limiter/password policy. Unit/HTTP/config/frontend terarah dan integration PostgreSQL/TLS (upgrade 4→5, revocation dan audit rollback) lulus. Ini bukti historis hari 09; bootstrap/pengelolaan staf ditutup pada pembaruan hari 10. Lihat [security.md](security.md) dan [laporan hari 09](progress/day-09.md).
 
-Pembaruan hari 10: permission matrix terpusat, owner-only staff CRUD terbatas, UI/API staf, command bootstrap tanpa echo, expected version dan audit denial/akun tersedia. Test unit/HTTP, PostgreSQL khusus user/role dan delapan test JavaScript lulus; tidak mengubah akun/data operasional. Hari 11–30 masih terbuka. Lihat [laporan hari 10](progress/day-10.md).
+Pembaruan hari 10: permission matrix terpusat, owner-only staff CRUD terbatas, UI/API staf, command bootstrap tanpa echo, expected version dan audit denial/akun tersedia. Test unit/HTTP, PostgreSQL khusus user/role dan delapan test JavaScript lulus; tidak mengubah akun/data operasional. Ini ringkasan historis; status terbaru mengikuti hari 13. Lihat [laporan hari 10](progress/day-10.md).
+
+Pembaruan hari 11–12: customer/search/history, expiry/rotasi tracking dan projection publik minimum, katalog/histori harga serta snapshot order tersedia. Bukti dan batas UI/data nyata mengikuti [hari 11](progress/day-11.md) dan [hari 12](progress/day-12.md).
+
+Pembaruan hari 13: pekerjaan parsial yang sudah tersimpan dituntaskan dengan kontrak replay HTTP konsisten, tes header/history/otorisasi, upgrade 8→9, bukti concurrency order/payment dan perbaikan fixture/seed yang tertinggal. Migration 9 memakai lock/version, processing milestone, riwayat status dan receipt command append-only. Race belum terverifikasi karena gcc tidak tersedia; tidak ada deployment/migration operasional. Lihat [hari 13](progress/day-13.md). Tahap berikutnya adalah **hari 14 — payment/ledger, partial/overpayment/refund dan aturan audit finansial**; bukan rilis produksi.
 
 ## Aturan pelaksanaan
 

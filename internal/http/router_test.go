@@ -24,7 +24,10 @@ type endpointRecorder struct {
 	name string
 	id   string
 }
-func (e *endpointRecorder) OrderHistory(w http.ResponseWriter,r *http.Request){e.record("history",w,r)}
+
+func (e *endpointRecorder) OrderHistory(w http.ResponseWriter, r *http.Request) {
+	e.record("history", w, r)
+}
 
 func (e *endpointRecorder) record(name string, w http.ResponseWriter, r *http.Request) {
 	e.name, e.id = name, r.PathValue("id")
@@ -87,6 +90,7 @@ func TestExistingRoutes(t *testing.T) {
 		{"GET", "/api/health", "health", "", false},
 		{"GET", "/api/pesanan/ORD-123", "detail", "ORD-123", true},
 		{"GET", "/api/pesanan/ORD-123/struk", "receipt", "ORD-123", true},
+		{"GET", "/api/pesanan/ORD-123/history", "history", "ORD-123", true},
 		{"POST", "/api/login", "login", "", false},
 		{"GET", "/api/pesanan", "list", "", true},
 		{"GET", "/api/pesanan/status?q=Selesai", "filter", "", true},

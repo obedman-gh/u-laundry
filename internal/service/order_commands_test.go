@@ -83,3 +83,37 @@ func TestOrderCommandReplayAndRollback(t *testing.T) {
 		}
 	}
 }
+
+func TestOrderCreateCommandFailuresAndAuthorization(t *testing.T) {
+	ctx := context.Background()
+	for _, stage := range []string{"lock_command", "find_command", "status_event", "save_command", "commit"} {
+		t.Run(stage, func(t *testing.T) {
+			u, rt := fixture(t, domain.Owner)
+			before := len(u.state.orders)
+			if stage == "commit" {
+				u.commitErr = failure
+			} else {
+				u.failAt = stage
+			}
+			result, err := NewOrders(u, rt).Create(ctx, "actor-1", orderInput())
+			if err == nil || result.TrackingToken != "" || len(u.state.orders) != before || len(u.state.commands) != 0 || len(u.state.statusEvents) != 0 {
+				t.Fatal("failed create persisted or returned a capability", err)
+			}
+		})
+	}
+	u, rt := fixture(t, domain.Owner)
+	orders := NewOrders(u, rt)
+	created, err := orders.Create(ctx, "actor-1", orderInput())
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed := orderInput()
+	changed.Notes = "Permintaan berbeda"
+	_, err = orders.Create(ctx, "actor-1", changed)
+	requireDomain(t, err, domain.Conflict, "idempotency_conflict")
+	u.state.staff["actor-1"] = domain.Staff{}
+	_, err = orders.Create(ctx, "actor-1", orderInput())
+	requireDomain(t, err, domain.Forbidden, "")
+	_, err = orders.History(ctx, "actor-1", created.Order.ID(), repository.Page{})
+	requireDomain(t, err, domain.Forbidden, "")
+}

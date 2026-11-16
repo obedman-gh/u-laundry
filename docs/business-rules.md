@@ -1,4 +1,4 @@
-# Aturan domain laundry — Hari 12
+# Aturan domain laundry — Hari 13
 
 `internal/domain` adalah aturan bisnis Go murni, memakai standard library. Repository hari 06 dan service/HTTP hari 07 sudah tersambung; lihat [architecture.md](architecture.md). Server domain menghitung total katalog, memisahkan payment/status dan memeriksa actor/version/audit pada use case. DTO `models/` dan data legacy tetap di repository sebagai artefak transisi, tetapi tidak dibaca handler/server baru. Import data dan bootstrap akun belum dilakukan; lihat [api.md](api.md) sebelum memakai client lama.
 
@@ -32,11 +32,21 @@ Struct referensi menyediakan `Validate`; constructor order/item dan setiap opera
 Status awal selalu `received`, ditentukan domain. Transisi mundur, lompatan, status asing dan transisi ke status yang sama ditolak. `CheckTransition` memeriksa tabel; `Order.Transition` juga memeriksa syarat instance:
 
 - Waktu perubahan wajib dan tidak mendahului pembaruan terakhir; waktu sama diperbolehkan. Clock/ID berasal server/use case, tidak dibuat melalui `time.Now()` di domain.
-- Menjadi ready mencatat `ReadyAt`, diambil mencatat `CollectedAt`, pembatalan mencatat `CancelledAt`/alasan. Waktu tidak dihitung ulang pada kegagalan/retry.
+- Menjadi processing mencatat `ProcessingAt`, ready mencatat `ReadyAt`, diambil mencatat `CollectedAt`, pembatalan mencatat `CancelledAt`/alasan. Waktu tidak dihitung ulang pada kegagalan/retry. ProcessingAt historis yang tidak diketahui tetap kosong, bukan diisi waktu upgrade.
 - Pengambilan memerlukan saldo tagihan nol. Pembatalan memerlukan alasan 1–250 karakter dan belum ada pembayaran; siap diambil tidak dapat dibatalkan pada fondasi ini.
 - Perubahan status tidak mengubah nominal, mencatat payment, atau membuat ledger. Pembatalan menyimpan snapshot penawaran semula, tanpa memalsukan pelunasan; laporan piutang mendatang harus mengecualikan order cancelled.
 
 `PaymentStatus` terpisah dan diturunkan dari total dan payment tercatat: `unpaid`, `partially_paid`, `paid`. Total nol (tarif gratis atau diskon penuh yang sah) dianggap paid tanpa transaksi uang nol. Pembayaran dapat melunasi order saat masih diterima/diproses; itu tidak otomatis berarti cucian siap/diambil. Order cancelled tetap menyimpan ringkasan historis pembayaran, bukan tagihan baru.
+
+### Konkurensi dan retry command hari 13
+
+Create/status/cancel memerlukan idempotency key dari klien. Service mengotorisasi actor terkini, mengambil transaction advisory lock `(actor,key)`, membandingkan fingerprint SHA-256 payload terstruktur dan operasi, lalu mengunci order `FOR UPDATE` untuk update/replay. Uniqueness tetap memakai actor/key lengkap; collision hash lock hanya menyerialkan command lain. Create mengunci layanan menurut ID terurut. Status/cancel memakai expected version; payment dan rotasi tracking memakai lock order yang sama dan menaikkan version, sehingga status dengan salinan lama ditolak tanpa lost update.
+
+Command baru menyimpan order, status event, audit dan receipt dalam satu transaksi; create juga menyimpan snapshot/token hash. Kegagalan audit/event/receipt/commit tidak mengembalikan sukses dan membatalkan efek transaksi. Command yang rollback tidak menghabiskan key; duplikat yang menunggu dapat menerapkannya. Key sama/payload atau operasi berbeda konflik, termasuk expected version berbeda. Create customer belum idempotent.
+
+Replay command sukses dengan key dan payload semula tidak mengulangi efek, mengembalikan order terkini dan versi penerapan command. Jangan mengharapkan respons byte-identik setelah order berubah. Create replay tidak mengembalikan token tracking; lakukan rotasi privat bila respons pertama hilang. Staf nonaktif atau tanpa izin tetap ditolak. Untuk stale conflict dengan key baru, baca ulang dan konfirmasi intent sebelum mengirim key/versi baru; tidak ada retry otomatis dengan versi yang diganti.
+
+`order_status_events` append-only menyimpan create/transisi, actor, status asal/tujuan, version dan waktu server. Baseline upgrade memakai status/version/updated_at existing tanpa actor atau rekonstruksi transisi. ProcessingAt lama tetap tidak diketahui; transisi baru received→processing selalu mencatatnya. Event status tidak dibuat untuk payment atau rotasi tracking; gap versi sah. Trigger DB menolak lompatan status, versi yang tidak naik satu, pengubahan milestone, pickup belum lunas dan pembatalan dengan payment. Penulis SQL manual tetap harus mengikuti transaction boundary payment/ledger/audit; runtime tidak diberi hak DDL/TRUNCATE.
 
 ## Uang, jumlah dan diskon
 
@@ -58,7 +68,7 @@ Status awal selalu `received`, ditentukan domain. Transisi mundur, lompatan, sta
 - Harga existing — migration 000008 menambahkan urutan dan satu baseline pada versi yang sedang tersimpan. Baseline hanya keadaan pertama yang diamati; harga sebelum baseline tidak direkonstruksi. `source=staff` memiliki changed_by; baseline/demo tanpa actor. Histori tidak menyimpan profil atau kontak pelanggan.
 - Snapshot — order_items menyimpan service_id, service_name, unit, unit_price, pieces/grams dan line_total; orders menyimpan subtotal, discount, alasan/pemberi persetujuan, total dan estimasi. Pembacaan/struk memvalidasi snapshot tersimpan tanpa menghitung ulang dari katalog. Perubahan nama/satuan/harga/durasi/nonaktif tidak mengubah order lama.
 - Konkurensi — order mengunci layanan menurut ID terurut sebelum menghitung snapshot; konfigurasi mengunci row yang sama dengan expected version. Order yang sudah memegang lock memakai harga saat itu; editor menunggu commit. Order setelah editor commit memakai nilai baru. Semua snapshot dan audit order disimpan atomik.
-- Data contoh — `scripts/catalog-demo.sql` terpisah dari migration, hanya membuat tiga layanan sintetis dan revisi demo, tanpa akun, kredensial, pelanggan atau transaksi. Script menolak database tanpa akhiran `_demo`, schema selain versi 8, data bisnis existing dan pemanggilan ulang. `scripts/demo.sql` lama khusus tabel legacy, bukan seed server domain.
+- Data contoh — `scripts/catalog-demo.sql` terpisah dari migration, hanya membuat tiga layanan sintetis dan revisi demo, tanpa akun, kredensial, pelanggan atau transaksi. Script menolak database tanpa akhiran `_demo`, schema selain versi 9, data bisnis existing dan pemanggilan ulang. `scripts/demo.sql` lama khusus tabel legacy, bukan seed server domain; guard schema-nya juga mengikuti versi 9.
 
 ## Validasi data dan waktu
 

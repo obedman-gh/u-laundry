@@ -481,7 +481,7 @@ func TestPostgresMigrations(t *testing.T) {
 		`UPDATE schema_migrations SET checksum=repeat('0',64) WHERE version=1`,
 		`DELETE FROM schema_migrations WHERE version=1`,
 		`UPDATE schema_migrations SET name='changed' WHERE version=1`,
-		`INSERT INTO schema_migrations (version,name,checksum) VALUES (7,'future',repeat('0',64))`,
+		`INSERT INTO schema_migrations (version,name,checksum) SELECT max(version)+1,'future',repeat('0',64) FROM schema_migrations`,
 	} {
 		t.Run("history_drift", func(t *testing.T) {
 			db := newDB(t)

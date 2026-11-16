@@ -596,7 +596,7 @@ func TestPostgresRepositories(t *testing.T) {
 		db, store := setup(t)
 		o := newOrder(t, "order-1", customer, service)
 		create(t, store, o)
-		if _, err := db.ExecContext(ctx, `UPDATE public.orders SET subtotal=subtotal+1,total=total+1`); err != nil {
+		if _, err := db.ExecContext(ctx, `UPDATE public.orders SET subtotal=subtotal+1,total=total+1,version=version+1`); err != nil {
 			t.Fatal(err)
 		}
 		err := store.View(ctx, func(r repository.Readers) error { _, err := r.GetOrder(ctx, o.ID()); return err })

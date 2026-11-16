@@ -105,7 +105,7 @@ func (h *Handler) BikinPesananBaru(w http.ResponseWriter, r *http.Request) {
 	if created.Replayed {
 		status = http.StatusOK
 	}
-	response.JSON(w, r, status, dto.CreatedOrderResponse{Order: orderView(repository.OrderRecord{Order: created.Order, Version: created.Version, AppliedVersion: 1}), TrackingToken: created.TrackingToken, TrackingExpiresAt: nullableTime(created.TrackingExpiresAt), Replayed: created.Replayed})
+	response.JSON(w, r, status, dto.CreatedOrderResponse{Order: orderView(repository.OrderRecord{Order: created.Order, Version: created.Version, AppliedVersion: 1, Replayed: created.Replayed}), TrackingToken: created.TrackingToken, TrackingExpiresAt: nullableTime(created.TrackingExpiresAt), Replayed: created.Replayed})
 }
 func (h *Handler) UpdateStatusPesanan(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r)
