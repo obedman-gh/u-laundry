@@ -34,6 +34,9 @@ type OrderUseCase interface {
 }
 type PaymentUseCase interface {
 	Record(context.Context, string, service.PaymentInput) (repository.PaymentResult, error)
+	Refund(context.Context, string, service.RefundInput) (repository.RefundResult, error)
+	List(context.Context, string, string, repository.Page) ([]domain.Payment, error)
+	Refunds(context.Context, string, string, repository.Page) ([]domain.Refund, error)
 }
 type TrackingUseCase interface {
 	Get(context.Context, string) (service.TrackingView, error)

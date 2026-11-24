@@ -31,7 +31,7 @@ func (s *Payments) Record(ctx context.Context, actor string, in PaymentInput) (r
 		if err != nil {
 			return err
 		}
-		p := domain.Payment{ID: "pending", OrderID: in.OrderID, IdempotencyKey: in.IdempotencyKey, RecordedBy: a.ID, Amount: in.Amount, Method: in.Method, ReceivedAt: at}
+		p := domain.Payment{ID: "pending", OrderID: in.OrderID, IdempotencyKey: in.IdempotencyKey, RecordedBy: a.ID, Amount: in.Amount, Method: in.Method, Status: domain.PaymentPosted, ReceivedAt: at}
 		if err := p.Validate(); err != nil {
 			return err
 		}

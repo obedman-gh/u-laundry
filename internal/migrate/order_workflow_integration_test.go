@@ -81,7 +81,7 @@ SELECT id,1,'upgrade-service','Layanan Contoh','piece',0,1,0,0 FROM orders;
 		t.Fatal(err)
 	}
 	status, err := Status(ctx, db)
-	if err != nil || len(status) != 9 || status[8].AppliedAt == nil {
+	if err != nil || len(status) != 10 || status[8].AppliedAt == nil {
 		t.Fatal("version 9 not applied", err)
 	}
 	if err = Up(ctx, db); err != nil {

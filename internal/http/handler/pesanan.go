@@ -204,7 +204,7 @@ func (h *Handler) RecordPayment(w http.ResponseWriter, r *http.Request) {
 	if result.Replayed {
 		status = http.StatusOK
 	}
-	response.JSON(w, r, status, dto.PaymentResponse{ID: result.Payment.ID, Amount: int64(result.Payment.Amount), Replayed: result.Replayed})
+	response.JSON(w, r, status, paymentView(result.Payment, result.Replayed))
 }
 func (h *Handler) Tracking(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Referrer-Policy", "no-referrer")

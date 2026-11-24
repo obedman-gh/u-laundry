@@ -77,9 +77,28 @@ type OrderStatusEventResponse struct {
 	Source     string    `json:"source"`
 }
 type PaymentResponse struct {
-	ID       string `json:"payment_id"`
-	Amount   int64  `json:"amount"`
-	Replayed bool   `json:"replayed"`
+	ID             string    `json:"payment_id"`
+	Amount         int64     `json:"amount"`
+	OrderID        string    `json:"order_id"`
+	Method         string    `json:"method"`
+	ReceivedAt     time.Time `json:"received_at"`
+	CashierID      string    `json:"cashier_id"`
+	Status         string    `json:"status"`
+	IdempotencyKey string    `json:"idempotency_key"`
+	Replayed       bool      `json:"replayed"`
+}
+type RefundResponse struct {
+	ID             string    `json:"refund_id"`
+	OrderID        string    `json:"order_id"`
+	PaymentID      string    `json:"payment_id"`
+	Amount         int64     `json:"amount"`
+	Method         string    `json:"method"`
+	RefundedAt     time.Time `json:"refunded_at"`
+	CashierID      string    `json:"cashier_id"`
+	Status         string    `json:"status"`
+	IdempotencyKey string    `json:"idempotency_key"`
+	Reason         string    `json:"reason"`
+	Replayed       bool      `json:"replayed"`
 }
 type TrackingResponse struct {
 	Code             string    `json:"tracking_code"`

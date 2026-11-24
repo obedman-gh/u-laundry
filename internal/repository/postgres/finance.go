@@ -9,11 +9,12 @@ import (
 	"ulaundry/internal/repository"
 )
 
-const paymentColumns = `id,order_id,idempotency_key,recorded_by,amount,method,received_at`
+const paymentColumns = `id,order_id,idempotency_key,recorded_by,amount,method,received_at,
+CASE WHEN EXISTS(SELECT 1 FROM public.refunds r WHERE r.payment_id=payments.id) THEN 'refunded' ELSE status END`
 
 func scanPayment(ctx context.Context, row scanner) (domain.Payment, error) {
 	var p domain.Payment
-	if err := row.Scan(&p.ID, &p.OrderID, &p.IdempotencyKey, &p.RecordedBy, &p.Amount, &p.Method, &p.ReceivedAt); err != nil {
+	if err := row.Scan(&p.ID, &p.OrderID, &p.IdempotencyKey, &p.RecordedBy, &p.Amount, &p.Method, &p.ReceivedAt, &p.Status); err != nil {
 		return p, dbError(ctx, "read payment", err)
 	}
 	if err := p.Validate(); err != nil {
@@ -51,7 +52,7 @@ func (s *session) RecordPayment(ctx context.Context, p domain.Payment, ledgerID 
 	if err != nil {
 		return repository.PaymentResult{}, err
 	}
-	_, err = s.tx.ExecContext(ctx, `INSERT INTO public.payments (`+paymentColumns+`) VALUES ($1,$2,$3,$4,$5,$6,$7)`, p.ID, p.OrderID, p.IdempotencyKey, p.RecordedBy, p.Amount, p.Method, p.ReceivedAt)
+	_, err = s.tx.ExecContext(ctx, `INSERT INTO public.payments (id,order_id,idempotency_key,recorded_by,amount,method,received_at) VALUES ($1,$2,$3,$4,$5,$6,$7)`, p.ID, p.OrderID, p.IdempotencyKey, p.RecordedBy, p.Amount, p.Method, p.ReceivedAt)
 	if err != nil {
 		return repository.PaymentResult{}, dbError(ctx, "record payment", err)
 	}
@@ -72,14 +73,14 @@ func (s *session) RecordPayment(ctx context.Context, p domain.Payment, ledgerID 
 	return repository.PaymentResult{Payment: p}, nil
 }
 func (s *session) insertLedger(ctx context.Context, e domain.LedgerEntry) error {
-	_, err := s.tx.ExecContext(ctx, `INSERT INTO public.ledger_entries (id,order_id,payment_id,type,amount,description,recorded_by,occurred_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, e.ID, nullString(e.OrderID), nullString(e.PaymentID), e.Type, e.Amount, e.Description, e.RecordedBy, databaseTime(e.OccurredAt))
+	_, err := s.tx.ExecContext(ctx, `INSERT INTO public.ledger_entries (id,order_id,payment_id,type,amount,description,recorded_by,occurred_at,refund_id,method) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`, e.ID, nullString(e.OrderID), nullString(e.PaymentID), e.Type, e.Amount, e.Description, e.RecordedBy, databaseTime(e.OccurredAt), nullString(e.RefundID), nullString(string(e.Method)))
 	return dbError(ctx, "record ledger", err)
 }
 func (s *session) RecordExpense(ctx context.Context, e domain.LedgerEntry) error {
 	if err := e.Validate(); err != nil {
 		return err
 	}
-	if e.Type != domain.Credit || e.PaymentID != "" || e.OrderID != "" {
+	if e.Type != domain.Credit || e.PaymentID != "" || e.RefundID != "" || e.OrderID != "" {
 		return &domain.Error{Kind: domain.Validation, Code: "invalid_expense", Field: "ledger", Message: "Pengeluaran operasional harus KREDIT tanpa relasi pembayaran atau pesanan."}
 	}
 	return s.insertLedger(ctx, e)
@@ -89,13 +90,14 @@ func (s *session) LedgerForOrder(ctx context.Context, id string, page repository
 	if err != nil {
 		return nil, err
 	}
-	return queryAll(ctx, s.tx, "read ledger", `SELECT id,order_id,payment_id,type,amount,description,recorded_by,occurred_at FROM public.ledger_entries WHERE order_id=$1 ORDER BY occurred_at,id LIMIT $2 OFFSET $3`, func(row *sql.Rows) (domain.LedgerEntry, error) {
+	return queryAll(ctx, s.tx, "read ledger", `SELECT id,order_id,payment_id,type,amount,description,recorded_by,occurred_at,refund_id,method FROM public.ledger_entries WHERE order_id=$1 ORDER BY occurred_at,id LIMIT $2 OFFSET $3`, func(row *sql.Rows) (domain.LedgerEntry, error) {
 		var e domain.LedgerEntry
-		var orderID, paymentID sql.NullString
-		if err := row.Scan(&e.ID, &orderID, &paymentID, &e.Type, &e.Amount, &e.Description, &e.RecordedBy, &e.OccurredAt); err != nil {
+		var orderID, paymentID, refundID, method sql.NullString
+		if err := row.Scan(&e.ID, &orderID, &paymentID, &e.Type, &e.Amount, &e.Description, &e.RecordedBy, &e.OccurredAt, &refundID, &method); err != nil {
 			return e, dbError(ctx, "scan ledger", err)
 		}
 		e.OrderID, e.PaymentID = orderID.String, paymentID.String
+		e.RefundID, e.Method = refundID.String, domain.PaymentMethod(method.String)
 		if err := e.Validate(); err != nil {
 			return e, corrupt("read ledger")
 		}

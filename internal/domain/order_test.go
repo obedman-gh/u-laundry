@@ -46,7 +46,7 @@ func order(t *testing.T) domain.Order {
 }
 
 func payment(id string, amount domain.Money, at time.Time) domain.Payment {
-	return domain.Payment{ID: id, OrderID: "order-1", IdempotencyKey: "key-" + id, RecordedBy: "staff-1", Amount: amount, Method: domain.Cash, ReceivedAt: at}
+	return domain.Payment{ID: id, OrderID: "order-1", IdempotencyKey: "key-" + id, RecordedBy: "staff-1", Amount: amount, Method: domain.Cash, Status: domain.PaymentPosted, ReceivedAt: at}
 }
 
 func requireError(t *testing.T, err error, kind domain.ErrorKind, code string) {
@@ -347,7 +347,7 @@ func TestRejectedPaymentsDoNotMutate(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := o
-	for _, duplicate := range []domain.Payment{p, {ID: "different", OrderID: p.OrderID, IdempotencyKey: p.IdempotencyKey, RecordedBy: p.RecordedBy, Amount: 1, Method: p.Method, ReceivedAt: p.ReceivedAt}} {
+	for _, duplicate := range []domain.Payment{p, {ID: "different", OrderID: p.OrderID, IdempotencyKey: p.IdempotencyKey, RecordedBy: p.RecordedBy, Amount: 1, Method: p.Method, Status: domain.PaymentPosted, ReceivedAt: p.ReceivedAt}} {
 		requireError(t, o.RecordPayment(duplicate), domain.Conflict, "duplicate_payment")
 		if !reflect.DeepEqual(o, before) {
 			t.Fatal("duplicate payment changed state")

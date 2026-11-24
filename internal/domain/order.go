@@ -312,6 +312,9 @@ func (o *Order) RecordPayment(payment Payment) error {
 	if err := payment.Validate(); err != nil {
 		return err
 	}
+	if payment.Status != PaymentPosted {
+		return invalid("payment.status", "Penerimaan baru harus berstatus posted.")
+	}
 	if payment.OrderID != o.id {
 		return invalid("payment.order_id", "Pembayaran bukan untuk pesanan ini.")
 	}
@@ -338,4 +341,43 @@ func (o *Order) RecordPayment(payment Payment) error {
 	o.payments = append(payments, payment)
 	o.paid, o.updatedAt = paid, payment.ReceivedAt
 	return nil
+}
+
+func (o *Order) RefundPayment(r Refund) error {
+	if err := o.valid(); err != nil {
+		return err
+	}
+	if err := r.Validate(); err != nil {
+		return err
+	}
+	if r.OrderID != o.id {
+		return invalid("refund.order_id", "Refund bukan untuk pesanan ini.")
+	}
+	if o.status == Collected || o.status == Cancelled {
+		return conflict("order_closed", "refund", "Pesanan telah ditutup.")
+	}
+	if r.RefundedAt.Before(o.updatedAt) {
+		return invalid("refund.refunded_at", "Waktu refund mendahului pembaruan terakhir.")
+	}
+	for i, p := range o.payments {
+		if p.ID != r.PaymentID {
+			continue
+		}
+		if p.Status == PaymentRefunded {
+			return conflict("already_refunded", "refund", "Pembayaran sudah dikembalikan.")
+		}
+		if r.Amount != p.Amount || r.Method != p.Method {
+			return invalid("refund", "Refund wajib penuh dengan metode pembayaran asal.")
+		}
+		if r.RefundedAt.Before(p.ReceivedAt) {
+			return invalid("refund.refunded_at", "Waktu refund mendahului pembayaran.")
+		}
+		payments := append([]Payment(nil), o.payments...)
+		payments[i].Status = PaymentRefunded
+		o.payments = payments
+		o.paid -= p.Amount
+		o.updatedAt = r.RefundedAt
+		return nil
+	}
+	return &Error{Kind: NotFound, Code: "payment_not_found", Field: "payment_id", Message: "Pembayaran tidak ditemukan."}
 }

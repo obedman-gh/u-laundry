@@ -1,6 +1,6 @@
-# Kontrak HTTP API — hari 13
+# Kontrak HTTP API — hari 14
 
-Server memakai storage domain hingga migration 000009 dan autentikasi existing. Ini perubahan kontrak dari handler legacy: tidak menerima total/harga/status klien saat create order; data/akun pesanan-kasir-keuangan lama belum diimpor. Jangan aktifkan pada data operasional sebelum mapping, backup/restore dan rekonsiliasi; lihat [architecture.md](architecture.md).
+Server memakai storage domain hingga migration 000010 dan autentikasi existing. Ini perubahan kontrak dari handler legacy: tidak menerima total/harga/status klien saat create order; data/akun pesanan-kasir-keuangan lama belum diimpor. Jangan aktifkan pada data operasional sebelum mapping, backup/restore dan rekonsiliasi; lihat [architecture.md](architecture.md).
 
 Semua body JSON memakai satu Content-Type application/json (charset UTF-8 opsional), maksimal 64 KiB termasuk whitespace, satu objek UTF-8 dan tanpa field asing. Content-Encoding selain identity atau header encoding berulang ditolak. Field duplikat, termasuk escape/alias kapitalisasi dan objek item bersarang, ditolak sebelum use case dipanggil. Rupiah dan gram/jumlah berupa integer. Cookie sesi HttpOnly diperlukan selain login/health/tracking. Bearer/localStorage tidak diterima lagi. JWT memerlukan HS256, issuer/audience/iat/exp/sub/username/role/jti dan registrasi sesi PostgreSQL; role/active tetap dimuat ulang setiap use case. Mutasi privat memerlukan X-CSRF-Token dan Origin persis PUBLIC_BASE_URL; login memerlukan Origin tersebut tanpa sesi awal. Owner pertama dibuat dengan command bootstrap-owner pada tabel staff kosong; staf berikutnya dikelola owner melalui API/UI. Utilitas setup-kasir lama hanya menyentuh tabel legacy dan bukan jalur akun domain.
 
@@ -27,8 +27,11 @@ Semua body JSON memakai satu Content-Type application/json (charset UTF-8 opsion
 | GET /api/pesanan/{id}/struk | Staf; HTML escaped untuk print; **tidak publik lagi** |
 | GET /api/pesanan/{id}/history | Staf; riwayat status privat, limit/offset, version menurun |
 | PUT /api/pesanan/{id} | Staf; status dan expected version + Idempotency-Key wajib; bukan mencatat pembayaran |
-| POST /api/pesanan/{id}/cancel | Owner/admin; version/reason + Idempotency-Key wajib; belum ada pembayaran |
+| POST /api/pesanan/{id}/cancel | Owner/admin; version/reason + Idempotency-Key wajib; saldo payment net harus nol |
 | POST /api/pesanan/{id}/pembayaran | Staf; amount/method + header Idempotency-Key wajib |
+| GET /api/pesanan/{id}/pembayaran | Staf; history pembayaran privat, limit/offset, termasuk receipt refunded |
+| POST /api/pesanan/{id}/refunds | Owner/admin; payment_id/reason + Idempotency-Key wajib; refund penuh metode asal |
+| GET /api/pesanan/{id}/refunds | Staf; history refund privat, limit/offset |
 | GET /api/tracking/{token} | Publik capability belum expired; tepat tracking_code/status/estimated_ready_at/message |
 | POST /api/pesanan/{id}/tracking | Staf aktif + CSRF; {version} -> tracking_token/tracking_expires_at/version; mencabut token lama |
 | GET /api/laporan/neraca | Owner/admin; from/to RFC3339 opsional berpasangan, default hari berjalan WITA; cash inflow/outflow/balance + report_id |
@@ -47,7 +50,17 @@ Contoh create order (ID layanan/customer dari respons create/configure):
 
 Layanan kg memakai grams; item memakai pieces, field lain nol. Estimasi boleh tidak dikirim dan dihitung dari durasi katalog. ID order, nama customer, harga, total dan status bukan field bebas dari request; customer_id menunjuk customer yang sudah tersimpan. Diskon nominal memerlukan owner/admin dan discount_reason. Total response dihitung server. Contoh update progres: `{"status":"processing","version":1}`. Lima status: received → processing → ready → collected, received/processing dapat cancelled melalui endpoint cancel. Pengambilan harus lunas. Estimasi dan batas periode laporan dinormalisasi UTC/mikrodetik; periode yang menjadi kosong setelah normalisasi ditolak.
 
-Pembayaran: `{"amount":10000,"method":"cash"}` dengan Idempotency-Key yang dibuat klien dan dipakai kembali hanya untuk payload bisnis sama. Metode manual cash/bank_transfer/qris, tanpa gateway. Replay mengembalikan payment_id/amount yang sama dan replayed=true; tidak menambah ledger/audit. Status `Sudah Lunas` lama tidak diterima sebagai status operasional. Retry create/status/cancel mengikuti kontrak command di bawah; create customer belum idempotent.
+Pembayaran: `{"amount":10000,"method":"cash"}` dengan Idempotency-Key yang dibuat klien dan dipakai kembali hanya untuk payload bisnis sama. Metode manual cash/bank_transfer/qris, tanpa gateway. Replay mengembalikan payment_id/amount yang sama dan replayed=true; tidak menambah ledger/audit. Status `Sudah Lunas` lama tidak diterima sebagai status operasional. Retry create/status/cancel mengikuti kontrak command di bawah; create customer belum idempotent. Aturan refund dan saldo net ada di [finance.md](finance.md).
+
+## Payment/refund hari 14
+
+POST pembayaran mengembalikan 201 untuk posting baru, 200 untuk replay sah. Respons mencakup `payment_id`, `order_id`, integer `amount`, `method`, `received_at`, `cashier_id`, `status` (`posted`/`refunded`), `idempotency_key`, `replayed`. Key unik `(order_id,key)`; payload bisnis amount/method/actor harus sama. Replay receipt yang telah di-refund berstatus `refunded` dan tidak membayar ulang.
+
+POST `/api/pesanan/{id}/refunds` menerima `{"payment_id":"PAYMENT_ID","reason":"Koreksi pembayaran"}` dengan satu header Idempotency-Key serta cookie/Origin/CSRF existing. Amount/method ditentukan server dari payment asal; field tambahan ditolak. Respons 201/200 dengan `refund_id`, `order_id`, `payment_id`, `amount`, `method`, `refunded_at`, `cashier_id`, `status=posted`, `idempotency_key`, `reason`, `replayed`. Scope key refund terpisah `(order_id,key)`; payment/actor/alasan harus sama pada replay. Tidak ada expected version pada payment/refund: saldo dan status diputuskan di bawah lock, version order naik satu untuk posting baru.
+
+Refund hanya owner/admin, penuh satu receipt sebelum order `collected`/`cancelled`. DP diperbolehkan; overpayment, refund kedua dengan key baru, order ditutup dan key/payload berbeda mendapat 409 `conflict`. Field invalid/header hilang atau berulang mendapat 400 `validation_failed`, payment/order tidak ada 404 `not_found`, cashier refund 403 `forbidden`, tanpa sesi 401. Body reason wajib satu baris maksimal 250 karakter. Replay tetap memerlukan izin terkini dan dapat berhasil setelah order ditutup.
+
+GET kedua history menerima hanya limit/offset (default 20/maksimal 100, offset ≥0), urut waktu lalu ID menaik. Respons array memakai field record di atas dengan replayed=false; kosong `[]`, order tidak ada 404, pagination invalid 400. History payment termasuk receipt lama yang refunded; history refund menyimpan reversal terpisah. Semua respons finansial privat/no-store. Tidak ada endpoint edit/hapus record finansial atau gateway.
 
 Pagination limit default 20/maksimum 100, offset minimal 0. Detail sekarang satu objek, bukan array satu elemen. Ringkasan tetap id_pesanan/nama_customer/layanan/total_biaya/status untuk halaman daftar yang ada, ditambah payment_status/version. Nilai status sekarang kode domain; update frontend lengkap/diskon/POS belum dibuat. Konsumen JavaScript harus memperhatikan batas integer aman saat menangani nominal BIGINT besar; seluruh kalkulasi server tetap int64.
 
@@ -150,12 +163,13 @@ Izin berasal dari service.Allowed dan staf aktif yang dimuat ulang di use case, 
 | Diskon nominal beralasan (`approve_discount`) | Ya | Ya | Tidak |
 | Pembatalan sesuai domain (`cancel_order`) | Ya | Ya | Tidak |
 | Catat pembayaran manual (`record_payment`) | Ya | Ya | Ya |
+| Refund penuh (`refund_payment`) | Ya | Ya | Tidak |
 | Laporan kas (`generate_report`) | Ya | Ya | Tidak |
 | Baca audit bisnis berfilter objek (`read_audit`) | Ya | Ya | Tidak |
 | Konfigurasi aplikasi (`manage_configuration`, policy yang dicadangkan) | Ya | Tidak | Tidak |
 | Login/logout/sesi sendiri | Ya | Ya | Ya |
 
-Configuration belum memiliki endpoint/modul; baris policy bukan tombol atau fitur baru. Refund/shift tetap scope hari berikutnya. Tracking publik memakai token capability dan tidak memberi akses internal. Role/permission tak dikenal selalu ditolak. Menyembunyikan navigasi staff hanya bantuan UI; API/use case tetap menolak admin/cashier meskipun JWT/body menyebut owner.
+Configuration belum memiliki endpoint/modul; baris policy bukan tombol atau fitur baru. Shift tetap scope hari berikutnya. Tracking publik memakai token capability dan tidak memberi akses internal. Role/permission tak dikenal selalu ditolak. Menyembunyikan navigasi staff hanya bantuan UI; API/use case tetap menolak admin/cashier meskipun JWT/body menyebut owner.
 
 ## Akun staf dan audit
 
@@ -170,7 +184,7 @@ Semua endpoint berikut memerlukan cookie aktif. Mutasi memerlukan Origin exact d
 | POST /api/staff/{id}/reset-password | Owner; `{password,version:integer}` → 200 tanpa password |
 | GET /api/audit?entity=staff&entity_id=ID&limit=20&offset=0 | Owner/admin; array audit bisnis untuk objek yang diminta |
 
-Audit entity yang tersedia: staff/customer/service/order/payment/report; entity_id wajib berformat ID sah. Audit keamanan penolakan tetap di auth_events, belum menyediakan UI penelusuran umum (scope audit lengkap hari 17). Tidak ada endpoint hapus akun atau HTTP bootstrap publik. Password baru mengikuti policy hari 09 (minimal 12 karakter, maksimal 72 byte bcrypt); username 3–50 ASCII huruf/angka/titik/underscore/hyphen, unik exact/case-sensitive sebagaimana schema existing. Nama maksimal 100 karakter. Field actor_id/password_hash/active pada create ditolak sebagai unknown field.
+Audit entity yang tersedia: staff/customer/service/order/payment/refund/report; refund memakai action payment_refunded dan entity_id refund ID. entity_id wajib berformat ID sah. Audit keamanan penolakan tetap di auth_events, belum menyediakan UI penelusuran umum (scope audit lengkap hari 17). Tidak ada endpoint hapus akun atau HTTP bootstrap publik. Password baru mengikuti policy hari 09 (minimal 12 karakter, maksimal 72 byte bcrypt); username 3–50 ASCII huruf/angka/titik/underscore/hyphen, unik exact/case-sensitive sebagaimana schema existing. Nama maksimal 100 karakter. Field actor_id/password_hash/active pada create ditolak sebagai unknown field.
 
 Perubahan memakai expected version. Form stale memberi 409 dan harus memuat ulang; username duplikat 409; target tak ditemukan 404; invalid input 400; role tidak berhak 403. Owner tidak dapat menonaktifkan atau menurunkan role sendiri (409). Minimal satu owner aktif dipertahankan. Pengelolaan staf dan bootstrap memakai satu transaction-level advisory lock; identitas actor dimuat setelah lock, agar request owner yang sudah kehilangan role tidak melewati pemeriksaan karena antrean.
 

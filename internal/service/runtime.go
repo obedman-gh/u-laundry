@@ -86,7 +86,7 @@ func Allowed(role domain.Role, action Action) bool {
 	switch action {
 	case ManageStaff, ManageConfiguration:
 		return role == domain.Owner
-	case ConfigureService, CancelOrder, GenerateReport, ReadAudit, ApproveDiscount:
+	case ConfigureService, CancelOrder, GenerateReport, ReadAudit, ApproveDiscount, RefundPayment:
 		return role == domain.Owner || role == domain.Admin
 	case CreateCustomer, CreateOrder, ChangeStatus, RecordPayment, ReadOrders:
 		return role == domain.Owner || role == domain.Admin || role == domain.Cashier

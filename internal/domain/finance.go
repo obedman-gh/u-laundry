@@ -12,6 +12,13 @@ const (
 
 type PaymentMethod string
 
+type PaymentRecordStatus string
+
+const (
+	PaymentPosted   PaymentRecordStatus = "posted"
+	PaymentRefunded PaymentRecordStatus = "refunded"
+)
+
 const (
 	Cash         PaymentMethod = "cash"
 	BankTransfer PaymentMethod = "bank_transfer"
@@ -24,6 +31,7 @@ type Payment struct {
 	ID, OrderID, IdempotencyKey, RecordedBy string
 	Amount                                  Money
 	Method                                  PaymentMethod
+	Status                                  PaymentRecordStatus
 	ReceivedAt                              time.Time
 }
 
@@ -38,6 +46,9 @@ func (p Payment) Validate() error {
 	}
 	if p.Amount <= 0 {
 		return invalid("payment.amount", "Pembayaran harus lebih dari nol rupiah.")
+	}
+	if p.Status != PaymentPosted && p.Status != PaymentRefunded {
+		return invalid("payment.status", "Status record pembayaran tidak dikenal.")
 	}
 	if p.Method != Cash && p.Method != BankTransfer && p.Method != QRIS {
 		return invalid("payment.method", "Metode pembayaran tidak dikenal.")
@@ -56,10 +67,11 @@ const (
 )
 
 type LedgerEntry struct {
-	ID, OrderID, PaymentID, RecordedBy, Description string
-	Type                                            LedgerType
-	Amount                                          Money
-	OccurredAt                                      time.Time
+	ID, OrderID, PaymentID, RefundID, RecordedBy, Description string
+	Type                                                      LedgerType
+	Method                                                    PaymentMethod
+	Amount                                                    Money
+	OccurredAt                                                time.Time
 }
 
 func (e LedgerEntry) Validate() error {
@@ -94,6 +106,17 @@ func (e LedgerEntry) Validate() error {
 			return invalid("ledger.payment", "Penerimaan pembayaran wajib terkait pesanan dan bertipe DEBIT.")
 		}
 	}
+	if e.RefundID != "" {
+		if err := identifier("ledger.refund_id", e.RefundID); err != nil {
+			return err
+		}
+		if e.OrderID == "" || e.Type != Credit || e.PaymentID != "" {
+			return invalid("ledger.refund", "Refund wajib terkait pesanan dan bertipe KREDIT.")
+		}
+	}
+	if e.Method != "" && e.Method != Cash && e.Method != BankTransfer && e.Method != QRIS || (e.PaymentID != "" || e.RefundID != "") && e.Method == "" {
+		return invalid("ledger.method", "Metode buku kas tidak valid.")
+	}
 	return nil
 }
 
@@ -103,9 +126,41 @@ func NewPaymentLedger(id string, payment Payment) (LedgerEntry, error) {
 	if err := payment.Validate(); err != nil {
 		return LedgerEntry{}, err
 	}
-	entry := LedgerEntry{ID: id, OrderID: payment.OrderID, PaymentID: payment.ID, RecordedBy: payment.RecordedBy, Description: "Penerimaan pembayaran pesanan", Type: Debit, Amount: payment.Amount, OccurredAt: payment.ReceivedAt}
+	if payment.Status != PaymentPosted {
+		return LedgerEntry{}, invalid("payment.status", "Posting hanya untuk pembayaran baru.")
+	}
+	entry := LedgerEntry{ID: id, OrderID: payment.OrderID, PaymentID: payment.ID, RecordedBy: payment.RecordedBy, Description: "Penerimaan pembayaran pesanan", Type: Debit, Method: payment.Method, Amount: payment.Amount, OccurredAt: payment.ReceivedAt}
 	if err := entry.Validate(); err != nil {
 		return LedgerEntry{}, err
 	}
 	return entry, nil
+}
+
+// Refund reverses one complete payment. Both records and their ledger entries
+// remain immutable. The returned payment status is derived from this record.
+type Refund struct {
+	ID, OrderID, PaymentID, IdempotencyKey, RecordedBy, Reason string
+	Amount                                                     Money
+	Method                                                     PaymentMethod
+	RefundedAt                                                 time.Time
+}
+
+func (r Refund) Validate() error {
+	for _, v := range []struct{ field, value string }{{"refund.id", r.ID}, {"refund.order_id", r.OrderID}, {"refund.payment_id", r.PaymentID}, {"refund.idempotency_key", r.IdempotencyKey}, {"refund.recorded_by", r.RecordedBy}} {
+		if err := identifier(v.field, v.value); err != nil {
+			return err
+		}
+	}
+	if r.Amount <= 0 || (r.Method != Cash && r.Method != BankTransfer && r.Method != QRIS) || r.RefundedAt.IsZero() {
+		return invalid("refund", "Nominal, metode atau waktu refund tidak valid.")
+	}
+	return text("refund.reason", r.Reason, 250, true, false)
+}
+
+func NewRefundLedger(id string, r Refund) (LedgerEntry, error) {
+	if err := r.Validate(); err != nil {
+		return LedgerEntry{}, err
+	}
+	e := LedgerEntry{ID: id, OrderID: r.OrderID, RefundID: r.ID, RecordedBy: r.RecordedBy, Description: "Pengembalian pembayaran pesanan", Type: Credit, Method: r.Method, Amount: r.Amount, OccurredAt: r.RefundedAt}
+	return e, e.Validate()
 }

@@ -11,6 +11,9 @@ import (
 
 // Endpoints allows routing to be checked independently of SQL and bootstrap.
 type Endpoints interface {
+	RefundPayment(http.ResponseWriter, *http.Request)
+	ListPayments(http.ResponseWriter, *http.Request)
+	ListRefunds(http.ResponseWriter, *http.Request)
 	OrderHistory(http.ResponseWriter, *http.Request)
 	ListServices(http.ResponseWriter, *http.Request)
 	GetService(http.ResponseWriter, *http.Request)
@@ -76,7 +79,8 @@ func NewRouter(h Endpoints, m *middleware.Middleware, assets http.FileSystem) ht
 	register("/api/pesanan/{id}/struk", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.CetakStruk)})
 	register("/api/pesanan/{id}/tracking", map[string]http.HandlerFunc{"POST": m.ValidasiJWT(h.RotateTracking)})
 	register("/api/pesanan/{id}/cancel", map[string]http.HandlerFunc{"POST": m.ValidasiJWT(h.CancelOrder)})
-	register("/api/pesanan/{id}/pembayaran", map[string]http.HandlerFunc{"POST": m.ValidasiJWT(h.RecordPayment)})
+	register("/api/pesanan/{id}/pembayaran", map[string]http.HandlerFunc{"POST": m.ValidasiJWT(h.RecordPayment), "GET": m.ValidasiJWT(h.ListPayments)})
+	register("/api/pesanan/{id}/refunds", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.ListRefunds), "POST": m.ValidasiJWT(h.RefundPayment)})
 	register("/api/laporan/neraca", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.GetNeraca)})
 	register("/api/customers", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.SearchCustomers), "POST": m.ValidasiJWT(h.CreateCustomer)})
 	register("/api/customers/{id}", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.GetCustomer), "PUT": m.ValidasiJWT(h.UpdateCustomer)})

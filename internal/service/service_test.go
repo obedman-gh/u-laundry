@@ -25,6 +25,7 @@ type fakeState struct {
 	services         map[string]repository.ServiceRecord
 	orders           map[string]repository.OrderRecord
 	payments         map[string]domain.Payment
+	refunds          map[string]domain.Refund
 	ledger           map[string]domain.LedgerEntry
 	tracking         map[[32]byte]string
 	audits           []domain.AuditEvent
@@ -52,6 +53,7 @@ func (s *fakeState) clone() *fakeState {
 	c.services = copyMap(s.services)
 	c.orders = copyMap(s.orders)
 	c.payments = copyMap(s.payments)
+	c.refunds = copyMap(s.refunds)
 	c.ledger = copyMap(s.ledger)
 	c.tracking = copyMap(s.tracking)
 	c.audits = append([]domain.AuditEvent(nil), s.audits...)

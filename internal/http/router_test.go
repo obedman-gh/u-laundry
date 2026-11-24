@@ -25,6 +25,16 @@ type endpointRecorder struct {
 	id   string
 }
 
+func (e *endpointRecorder) RefundPayment(w http.ResponseWriter, r *http.Request) {
+	e.record("refund", w, r)
+}
+func (e *endpointRecorder) ListPayments(w http.ResponseWriter, r *http.Request) {
+	e.record("payments", w, r)
+}
+func (e *endpointRecorder) ListRefunds(w http.ResponseWriter, r *http.Request) {
+	e.record("refunds", w, r)
+}
+
 func (e *endpointRecorder) OrderHistory(w http.ResponseWriter, r *http.Request) {
 	e.record("history", w, r)
 }
@@ -102,6 +112,9 @@ func TestExistingRoutes(t *testing.T) {
 		{"PUT", "/api/services/service-1", "service", "service-1", true},
 		{"POST", "/api/pesanan/ORD-123/cancel", "cancel", "ORD-123", true},
 		{"POST", "/api/pesanan/ORD-123/pembayaran", "payment", "ORD-123", true},
+		{"GET", "/api/pesanan/ORD-123/pembayaran", "payments", "ORD-123", true},
+		{"GET", "/api/pesanan/ORD-123/refunds", "refunds", "ORD-123", true},
+		{"POST", "/api/pesanan/ORD-123/refunds", "refund", "ORD-123", true},
 		{"GET", "/api/tracking/token", "tracking", "", false},
 	} {
 		t.Run(tc.endpoint, func(t *testing.T) {

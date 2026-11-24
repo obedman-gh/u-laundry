@@ -2,7 +2,7 @@
 
 ULaundry adalah aplikasi operasional laundry. Stack: Go (`net/http`), PostgreSQL, HTML, CSS, dan JavaScript tanpa framework frontend besar.
 
-Status per 16 November 2026: **workflow, concurrency dan idempotensi order tahap 13 tersedia, belum layak produksi**. Lihat [arsitektur](docs/architecture.md), [kontrak API dan perubahan kompatibilitas](docs/api.md), [aturan bisnis](docs/business-rules.md), [database](docs/database.md), [audit baseline](docs/audit-baseline.md), [kriteria penerimaan](docs/acceptance-criteria.md), [backlog](docs/backlog-30-days.md), [laporan hari 13](docs/progress/day-13.md) dan [keamanan autentikasi](docs/security.md).
+Status per 24 November 2026: **payment/refund dan buku kas tahap 14 tersedia, belum layak produksi**. Lihat [arsitektur](docs/architecture.md), [kontrak API dan perubahan kompatibilitas](docs/api.md), [aturan bisnis](docs/business-rules.md), [aturan finansial](docs/finance.md), [database](docs/database.md), [audit baseline](docs/audit-baseline.md), [kriteria penerimaan](docs/acceptance-criteria.md), [backlog](docs/backlog-30-days.md), [laporan hari 14](docs/progress/day-14.md) dan [keamanan autentikasi](docs/security.md).
 
 ## Implementasi saat ini
 
@@ -11,7 +11,7 @@ Status per 16 November 2026: **workflow, concurrency dan idempotensi order tahap
 - Create/edit/search customer dan riwayat order, configure service, create order dengan perhitungan katalog server, status/version dan cancellation terkontrol, serta daftar/detail berfilter/pagination.
 - Owner/admin mengelola layanan kg/item, harga, durasi, aktif dan urutan melalui `/services.html`; histori revisi dan snapshot order menjaga total transaksi lama.
 - Create, perubahan status dan pembatalan order wajib `Idempotency-Key`; retry identik oleh staf yang sama mengembalikan keadaan order terkini tanpa mengulang efek. Riwayat status privat dan milestone mulai proses tersedia.
-- Endpoint payment terpisah, payment-ledger-audit satu transaksi, replay key identik tanpa posting ulang; `Sudah Lunas` bukan status operasional.
+- Endpoint payment/refund terpisah, receipt-ledger-audit satu transaksi, replay key identik tanpa posting ulang; DP/metode campuran dan refund penuh owner/admin sebelum pengambilan tersedia. Receipt/ledger append-only; `Sudah Lunas` bukan status operasional.
 - Struk staf terautentikasi dan HTML escaping; printer fisik 58/80mm belum diverifikasi. Tracking publik memakai token acak dengan hash tersimpan dan projection minimal.
 - Data laporan buku kas per rentang tanggal (default hari berjalan WITA), hanya owner/admin dan diaudit.
 - Halaman login dan daftar antrean; belum tersedia UI POS lengkap, pembayaran, shift, dan laporan.
@@ -23,7 +23,7 @@ Struktur: `cmd/server/` menyusun pool, runtime clock/ID/token, repository dan us
 
 Use case dipisah menjadi Customers/Catalog/Orders/Payments/Tracking/Reports/Auth/Health, dengan clock/ID/token generator yang dapat diganti untuk test. Payload create order menolak harga/total klien; snapshot katalog dan diskon sah dihitung domain. Kegagalan audit menyebabkan rollback perubahan pada use case, bukan keberhasilan parsial. Pilihan kebijakan domain hari 05 tetap perlu ditinjau sebelum aktivasi operasional.
 
-Migration **000009** menambah processing_at, riwayat status, bukti idempotensi command dan trigger workflow; histori katalog versi 8 tetap. `up` menerapkan sembilan versi; SQL existing tetap immutable. **Server sekarang memakai tabel domain, bukan pesanan/kasir/keuangan lama.** Data legacy tetap, tetapi tidak otomatis terlihat/diimpor atau dipakai login. Sebelum deployment data nyata wajib backup/restore salinan, mapping/import akun/status/uang, rekonsiliasi dan satu writer. Bootstrap owner domain aman tersedia lewat cmd/admin; utilitas setup-kasir lama tidak membuat akun domain. Jangan menganggap perubahan kode ini sudah melakukan cutover data operasional. Seed katalog domain terpisah tersedia di scripts/catalog-demo.sql; scripts/demo.sql tetap khusus legacy.
+Migration **000010** menambah refund, metode ledger, append-only dan guard posting finansial; workflow versi 9 dan histori katalog versi 8 tetap. `up` menerapkan sepuluh versi; SQL 1–9 tetap immutable. Receipt historis tanpa ledger cocok ditolak atomik dan memerlukan rekonsiliasi; rollback memakai forward fix/binary kompatibel schema 10. **Server sekarang memakai tabel domain, bukan pesanan/kasir/keuangan lama.** Data legacy tetap, tetapi tidak otomatis terlihat/diimpor atau dipakai login. Sebelum deployment data nyata wajib backup/restore salinan, mapping/import akun/status/uang, rekonsiliasi dan satu writer. Bootstrap owner domain aman tersedia lewat cmd/admin; utilitas setup-kasir lama tidak membuat akun domain. Jangan menganggap perubahan kode ini sudah melakukan cutover data operasional. Seed katalog domain terpisah tersedia di scripts/catalog-demo.sql; scripts/demo.sql tetap khusus legacy.
 
 ## Prasyarat dan setup lokal
 
@@ -102,6 +102,8 @@ Buka `http://localhost:8080/login.html` sesuai PUBLIC_BASE_URL/origin setelah sc
 | PostgreSQL migration fresh/upgrade | Isi `ULAUNDRY_TEST_ADMIN_DSN` ke database `postgres` pada **cluster test khusus**, lalu `go test ./internal/migrate -run '^TestPostgresMigrations$' -count=1 -timeout=120s -v`; membuat/menghapus DB test acak, tidak membaca `.env`; lihat [isolasi test](docs/database.md#verifikasi-terarah) |
 | Static analysis HTTP/app | `go vet ./internal/http/... ./internal/app` — lulus hari 08; `go vet ./...` belum menjadi bukti seluruh repository |
 | Race workflow PostgreSQL | Pada host dengan compiler C yang mendukung Go race: `go test -race ./internal/service -run '^TestPostgresOrderConcurrency$' -count=1 -timeout=120s -v`; isi DSN cluster test. Windows sesi hari 13 belum memiliki gcc; race belum terverifikasi |
+| Payment/refund PostgreSQL | Isi DSN cluster test khusus; `go test ./internal/service -run '^TestPostgres(FinancePaymentsAndRefunds\|PaymentUseCaseAtomicity\|OrderConcurrency)$' -count=1 -timeout=120s -v` — DP, retry/concurrency, rollback, refund/pickup dan constraint; lihat docs/finance.md |
+| Upgrade finansial 9→10 | Isi DSN test; `go test ./internal/migrate -run '^TestPostgresFinanceUpgrade$' -count=1 -timeout=90s -v` — history/nominal tetap, method backfill dan kegagalan atomik data invalid |
 | Focused HTTP smoke | Test router memeriksa route existing dan session/logout, auth boundary, fallback API dan aset HTML; bukan acceptance bisnis dengan DB |
 
 Pada sandbox Windows yang membatasi penulisan cache di luar workspace, set environment berikut dalam sesi PowerShell sebelum command Go:
@@ -189,7 +191,7 @@ Batas bukti: UI memakai test DOM sintetis; browser Android/printer/konfigurasi p
 ## Layanan dan harga hari 12 — Tindakan — Hasil
 
 - Pengelolaan — `/services.html` tersedia dari antrean untuk owner/admin: kg/item, harga rupiah, durasi menit, status aktif, urutan dan histori. Harga harus eksplisit; Rp0 sah. Cashier membaca daftar aktif melalui API. Semua total order dihitung server dan disimpan sebagai snapshot.
-- Schema — migration 000008 menambah display_order dan service_revisions append-only, termasuk baseline nilai existing. Runner saat ini menerapkan hingga versi 9; compatibility/rollback mengikuti bagian hari 13 di bawah. Tidak ada data contoh dalam migration.
+- Schema — migration 000008 menambah display_order dan service_revisions append-only, termasuk baseline nilai existing. Runner saat ini menerapkan hingga versi 10; compatibility/rollback mengikuti [database.md](docs/database.md). Tidak ada data contoh dalam migration.
 - Demo — pada database disposable kosong berakhiran `_demo` yang sudah dimigrasi: `psql -v ON_ERROR_STOP=1 -d ulaundry_demo -f scripts/catalog-demo.sql` (atur koneksi ke cluster pengembangan). Hanya tiga layanan sintetis dan revisi; tanpa akun atau data pribadi. Pemanggilan ulang ditolak, bukan overwrite. Bootstrap owner tetap command terpisah.
 - Verifikasi terarah — command berikut tidak menjalankan test auth; bukti dan batas verifikasi di [laporan hari 12](docs/progress/day-12.md).
 
@@ -208,7 +210,7 @@ go build ./cmd/server ./cmd/migrate
 
 Create/status/cancel wajib `Idempotency-Key`. Retry memakai key, actor dan payload semula; replay mengembalikan order terkini, applied_version dan replayed tanpa mengulang transaksi/audit. Tracking token hanya diberikan pada create pertama; gunakan rotasi tracking privat bila respons pertama hilang. Stale version mendapat 409; baca ulang dan tinjau intent sebelum mengirim key/versi baru. Kontrak dan contoh ada di [API](docs/api.md#command-order-dan-riwayat-hari-13).
 
-Schema 9 menyimpan processing_at, histori status dan receipt command; data lama mendapat baseline tanpa mengarang waktu processing. Status/payment menggunakan lock order yang sama. Backup/restore salinan dan penghentian writer tetap wajib sebelum upgrade nyata; rollback memerlukan writer kompatibel versi 9 atau forward fix. Kedua seed demo mengikuti guard versi 9. Tahap berikutnya: Hari 14, payment/ledger dan refund; belum rilis produksi.
+Schema 9 menyimpan processing_at, histori status dan receipt command; data lama mendapat baseline tanpa mengarang waktu processing. Status/payment/refund menggunakan lock order yang sama. Backup/restore salinan dan penghentian writer tetap wajib sebelum upgrade nyata; compatibility/rollback kini mengikuti schema 10 di [database.md](docs/database.md). Kedua seed demo mengikuti guard versi 10. Hari 14 tersedia; tahap berikutnya Hari 15, shift dan rekonsiliasi harian. Belum rilis produksi.
 
 ```powershell
 go test ./internal/domain ./internal/service ./internal/http/... ./internal/migrate -skip '^TestPostgres' -count=1 -timeout=60s

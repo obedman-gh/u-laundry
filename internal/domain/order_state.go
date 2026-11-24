@@ -120,6 +120,9 @@ func RestoreOrder(s OrderState) (Order, error) {
 			return Order{}, invalid("payments", "Riwayat pembayaran tidak sesuai pesanan.")
 		}
 		ids[p.ID], keys[p.IdempotencyKey] = true, true
+		if p.Status == PaymentRefunded {
+			continue
+		}
 		var err error
 		paid, err = addMoney(paid, p.Amount)
 		if err != nil {

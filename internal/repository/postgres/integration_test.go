@@ -93,7 +93,7 @@ func TestPostgresRepositories(t *testing.T) {
 		}
 	}
 	payment := func(id, orderID, key string, amount domain.Money) domain.Payment {
-		return domain.Payment{ID: id, OrderID: orderID, IdempotencyKey: key, RecordedBy: actor.ID, Amount: amount, Method: domain.Cash, ReceivedAt: testAt.Add(time.Minute)}
+		return domain.Payment{ID: id, OrderID: orderID, IdempotencyKey: key, RecordedBy: actor.ID, Amount: amount, Method: domain.Cash, Status: domain.PaymentPosted, ReceivedAt: testAt.Add(time.Minute)}
 	}
 
 	t.Run("create_read_snapshots_and_reference_repositories", func(t *testing.T) {
@@ -454,7 +454,7 @@ func TestPostgresRepositories(t *testing.T) {
 		}
 		_, err = db.ExecContext(ctx, `UPDATE public.ledger_entries SET amount=amount+1`)
 		var pg *pq.Error
-		if !errors.As(err, &pg) || pg.Code != "23503" {
+		if !errors.As(err, &pg) || pg.Code != "23514" {
 			t.Fatal("payment/ledger amount FK missing", err)
 		}
 		if err := store.WithinTransaction(ctx, func(tx repository.Tx) error {

@@ -49,6 +49,10 @@ type PaymentResult struct {
 	Payment  domain.Payment
 	Replayed bool
 }
+type RefundResult struct {
+	Refund   domain.Refund
+	Replayed bool
+}
 
 type CustomerLookup interface {
 	GetCustomer(context.Context, string) (domain.Customer, error)
@@ -130,12 +134,16 @@ type OrderCommandDeduplication interface {
 }
 type PaymentQueries interface {
 	FindPaymentByKey(context.Context, string, string) (domain.Payment, error)
+	FindRefundByKey(context.Context, string, string) (domain.Refund, error)
+	PaymentsForOrder(context.Context, string, Page) ([]domain.Payment, error)
+	RefundsForOrder(context.Context, string, Page) ([]domain.Refund, error)
 	LedgerForOrder(context.Context, string, Page) ([]domain.LedgerEntry, error)
 }
 type PaymentPosting interface {
 	// RecordPayment locks the order and posts payment+derived ledger together.
 	// Same key+business payload replays; a changed payload is a conflict.
 	RecordPayment(context.Context, domain.Payment, string) (PaymentResult, error)
+	RecordRefund(context.Context, domain.Refund, string) (RefundResult, error)
 }
 type ExpensePosting interface {
 	RecordExpense(context.Context, domain.LedgerEntry) error

@@ -7,7 +7,7 @@ BEGIN
     IF current_database() NOT LIKE '%\_demo' ESCAPE '\' THEN
         RAISE EXCEPTION 'Demo requires a disposable database ending in _demo';
     END IF;
-    IF (SELECT count(*) FROM public.schema_migrations) <> 9 THEN
+    IF (SELECT count(*) FROM public.schema_migrations) <> 10 THEN
         RAISE EXCEPTION 'Apply schema migrations first';
     END IF;
     LOCK TABLE public.pesanan, public.kasir, public.keuangan IN EXCLUSIVE MODE;

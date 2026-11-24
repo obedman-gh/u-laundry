@@ -179,6 +179,18 @@ type PaymentRequest struct {
 	Method string `json:"method"`
 }
 
+type RefundRequest struct {
+	PaymentID string `json:"payment_id"`
+	Reason    string `json:"reason"`
+}
+
+func (v RefundRequest) Validate() error {
+	if !Identifier(v.PaymentID) || !text(v.Reason, 250, true, false) {
+		return bad("Pembayaran dan alasan refund wajib diisi.")
+	}
+	return nil
+}
+
 func (v PaymentRequest) Validate() error {
 	if v.Amount <= 0 || (v.Method != "cash" && v.Method != "bank_transfer" && v.Method != "qris") {
 		return bad("Nominal positif dan metode pembayaran yang sah wajib diisi.")

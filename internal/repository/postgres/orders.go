@@ -115,7 +115,7 @@ func (s *session) ListOrders(ctx context.Context, filter repository.OrderFilter)
 		return nil, &domain.Error{Kind: domain.Validation, Code: "invalid_status", Field: "status", Message: "Filter status tidak dikenal."}
 	}
 	// Only fixed SQL fragments are concatenated; every filter value is a bind.
-	return queryAll(ctx, s.tx, "list orders", `SELECT o.id,o.customer_id,o.customer_name,o.status,o.total,COALESCE((SELECT SUM(p.amount) FROM public.payments p WHERE p.order_id=o.id),0),o.created_at,o.estimated_ready_at,ARRAY(SELECT i.service_name FROM public.order_items i WHERE i.order_id=o.id ORDER BY i.line_no),o.version
+	return queryAll(ctx, s.tx, "list orders", `SELECT o.id,o.customer_id,o.customer_name,o.status,o.total,COALESCE((SELECT SUM(p.amount) FROM public.payments p WHERE p.order_id=o.id AND NOT EXISTS(SELECT 1 FROM public.refunds r WHERE r.payment_id=p.id)),0),o.created_at,o.estimated_ready_at,ARRAY(SELECT i.service_name FROM public.order_items i WHERE i.order_id=o.id ORDER BY i.line_no),o.version
 		FROM public.orders o WHERE ($1::text='' OR o.status=$1) AND ($2::text='' OR o.customer_id=$2)
 		ORDER BY o.created_at DESC,o.id DESC LIMIT $3 OFFSET $4`, func(row *sql.Rows) (repository.OrderSummary, error) {
 		var item repository.OrderSummary

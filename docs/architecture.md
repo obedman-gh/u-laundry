@@ -25,7 +25,7 @@ middleware -> JWT validation + actor ID in context
 | Customers | Memuat staf aktif, membuat/menormalisasi customer, menyimpan dan mengaudit dalam satu transaksi |
 | Catalog | Owner/admin mengonfigurasi layanan baru atau memperbarui harga/satuan/durasi/aktif dengan lock + expected version; menyimpan audit |
 | Orders | Mengambil customer/katalog/actor tepercaya, menghitung total/snapshot domain, membuat hash tracking dan audit; change status/cancel memakai lock/version dan aturan domain |
-| Payments | Memuat actor/order, mengunci sebelum memeriksa replay, memvalidasi pembayaran terhadap domain, lalu menyimpan payment + ledger + audit dalam satu transaksi |
+| Payments | Memuat actor/order, mengunci sebelum replay, memvalidasi payment/refund, lalu menyimpan receipt + ledger + version + audit dalam satu transaksi; history privat |
 | Tracking | Hash token valid → projection status/estimasi/milestone, tanpa ID pesanan, customer, kontak, catatan, layanan, harga atau payment |
 | Reports | Owner/admin mendapatkan cash-flow ledger periode [from,to) dan audit akses laporan; bukan menghitung pendapatan dari label status order |
 | Auth | Kredensial staf domain aktif, verifikasi bcrypt, penerbitan JWT dan audit login sukses; kegagalan username/password generik |
@@ -35,7 +35,7 @@ Tidak ada service raksasa yang memuat seluruh operasi. Runtime bersama hanya clo
 
 ## Authorization intent
 
-Use case menerima actor ID, bukan role pilihan klien. Pada setiap command, actor dimuat melalui repository di dalam transaction/view dan diperiksa active + perannya. JWT membawa subject ID; middleware hanya menerima HS256 dengan expiration dan subject nonkosong. Claim role tidak dipercaya. Body/header selain bearer tidak dapat memilih identitas aktor.
+Use case menerima actor ID, bukan role pilihan klien. Pada setiap command, actor dimuat melalui repository di dalam transaction/view dan diperiksa active + perannya. Middleware memvalidasi JWT HS256 dari cookie HttpOnly dan sesi PostgreSQL; role/active dimuat ulang pada use case. Mutasi memerlukan Origin/CSRF. Body/header tidak dapat memilih identitas aktor; Bearer tidak diterima. Detail claims dan sesi mengikuti [security.md](security.md).
 
 | Intent | Cashier | Admin/Owner |
 |---|---|---|
@@ -44,7 +44,7 @@ Use case menerima actor ID, bukan role pilihan klien. Pada setiap command, actor
 | Configure service, cancel order, generate financial report | Tidak | Ya |
 | Tracking publik | Token capability saja; tidak memberi akses internal | Token capability saja |
 
-Pembatalan tetap hanya pada transisi domain yang sah dan tanpa pembayaran; role owner bukan bypass invarian. Mengambil order harus lunas. `cancelled` tidak diterima melalui ChangeStatus; Cancel memerlukan alasan. Matriks ini kebijakan awal eksplisit, belum user-management/permission system lengkap. Audit actions mencakup customer_created, service_configured, order_created/status_changed/cancelled, discount_approved, payment_recorded, report_generated dan staff_logged_in.
+Pembatalan tetap hanya pada transisi domain yang sah dan saldo payment net nol; role owner bukan bypass invarian. Mengambil order harus lunas. `cancelled` tidak diterima melalui ChangeStatus; Cancel memerlukan alasan. Refund penuh hanya owner/admin sebelum pengambilan. Matriks lengkap dan pengelolaan staf mengikuti [api.md](api.md). Audit actions mencakup customer_created, service_configured, order_created/status_changed/cancelled, discount_approved, payment_recorded/refunded, report_generated dan staff_logged_in.
 
 ## Transaction boundary dan hasil
 
@@ -54,7 +54,9 @@ View memakai read-only REPEATABLE READ untuk state konsisten header/item/payment
 
 Payments mengunci order sebelum lookup key agar dua request identik tidak gagal karena saldo yang telah berubah. Replay order/key/amount/method/actor sama mengembalikan payment asli tanpa ID/audit/ledger baru. Payload bisnis berbeda menjadi conflict. Payment/ledger serta audit berada pada callback yang sama; adapter juga mengulangi pemeriksaan domain/lock sebagai pertahanan storage. UNIQUE(order_id,idempotency_key), UNIQUE ledger.payment_id dan FK komposit payment/order/amount melindungi posting. Tidak ada klaim jaminan bagi penulis SQL manual yang melanggar boundary ini.
 
-Jika commit putus dan hasilnya tidak diketahui, retry order/payment dengan key dan payload semula melalui transaksi baru. Tidak ada automatic retry callback/side effect. Create customer belum memiliki idempotency key; kegagalan jaringan setelah commit harus ditinjau sebelum mengirim create customer ulang. Refund/reversal, shift dan koreksi keuangan belum tersedia.
+Jika commit putus dan hasilnya tidak diketahui, retry order/payment/refund dengan key dan payload semula melalui transaksi baru. Tidak ada automatic retry callback/side effect. Create customer belum memiliki idempotency key; kegagalan jaringan setelah commit harus ditinjau sebelum mengirim create customer ulang. Refund penuh satu payment tersedia sebelum pengambilan sejak schema 10; shift dan koreksi lain belum tersedia. Lihat [finance.md](finance.md).
+
+Schema 10 menambah refunds append-only dan method pada ledger. Status payment refunded diturunkan dari refund; saldo detail/daftar mengecualikan receipt refunded, sementara laporan tetap menjumlahkan DEBIT/KREDIT historis. Trigger finansial mengunci order untuk guard saldo/status/waktu dan deferred constraint mewajibkan satu ledger dengan nominal/metode/actor/waktu cocok saat commit. Payment/refund/ledger menolak UPDATE/DELETE; hak runtime harus menolak TRUNCATE/DDL. Audit tetap tanggung jawab use case transaction, bukan dibuat otomatis untuk SQL manual. Refund dan cancel adalah dua transaksi terpisah yang keduanya memeriksa invarian terkini.
 
 ## Query, error dan batas presentation
 

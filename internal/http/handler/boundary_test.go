@@ -194,6 +194,15 @@ type fakePayment func(context.Context, string, service.PaymentInput) (repository
 func (f fakePayment) Record(c context.Context, a string, in service.PaymentInput) (repository.PaymentResult, error) {
 	return f(c, a, in)
 }
+func (f fakePayment) List(context.Context, string, string, repository.Page) ([]domain.Payment, error) {
+	panic("unexpected payment list")
+}
+func (f fakePayment) Refunds(context.Context, string, string, repository.Page) ([]domain.Refund, error) {
+	panic("unexpected refund list")
+}
+func (f fakePayment) Refund(context.Context, string, service.RefundInput) (repository.RefundResult, error) {
+	panic("unexpected refund")
+}
 func TestPaymentHTTPIdempotencyContract(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
