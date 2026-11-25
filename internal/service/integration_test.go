@@ -94,7 +94,7 @@ func TestPostgresPaymentUseCaseAtomicity(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(after) != 10 || after[3].AppliedAt == nil {
+	if len(after) != 11 || after[3].AppliedAt == nil {
 		t.Fatal("workflow migration missing")
 	}
 	for i := 0; i < 3; i++ {
@@ -114,6 +114,11 @@ func TestPostgresPaymentUseCaseAtomicity(t *testing.T) {
 	}
 	actor := domain.Staff{ID: "actor-1", Username: "staff.test", Name: "Staf Contoh", Role: domain.Admin, Active: true, CreatedAt: fixed, UpdatedAt: fixed}
 	if err := base.WithinTransaction(ctx, func(tx repository.Tx) error { return tx.AddStaff(ctx, actor, string(hash)) }); err != nil {
+		t.Fatal(err)
+	}
+	if err := base.WithinTransaction(ctx, func(tx repository.Tx) error {
+		return tx.AddShift(ctx, domain.CashShift{ID: "test-shift", CashierID: actor.ID, OpenKey: "fixture", OpenedAt: fixed})
+	}); err != nil {
 		t.Fatal(err)
 	}
 	_, rt := fixture(t, domain.Admin)

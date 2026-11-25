@@ -55,6 +55,10 @@ func (s *Payments) Record(ctx context.Context, actor string, in PaymentInput) (r
 		}
 		// Acceptance time is sampled after waiting for the order lock. A request
 		// queued behind another payment must not persist an earlier timestamp.
+		p.ShiftID, err = postingShift(ctx, tx, a.ID, p.Method, domain.Debit, p.Amount)
+		if err != nil {
+			return err
+		}
 		p.ReceivedAt, err = s.runtime.now()
 		if err != nil {
 			return err

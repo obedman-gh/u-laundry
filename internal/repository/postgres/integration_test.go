@@ -44,6 +44,9 @@ func TestPostgresRepositories(t *testing.T) {
 			if err := tx.AddStaff(ctx, actor, string(hash)); err != nil {
 				return err
 			}
+			if err := tx.AddShift(ctx, domain.CashShift{ID: "test-shift", CashierID: actor.ID, OpenKey: "fixture", OpenedAt: testAt}); err != nil {
+				return err
+			}
 			if err := tx.AddCustomer(ctx, customer); err != nil {
 				return err
 			}

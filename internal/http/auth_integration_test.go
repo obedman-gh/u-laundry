@@ -75,7 +75,7 @@ func TestPostgresCookieAuthenticationLifecycle(t *testing.T) {
 		t.Fatal("migration repeat failed", err)
 	}
 	var count int
-	if err = db.QueryRowContext(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil || count != 8 {
+	if err = db.QueryRowContext(ctx, `SELECT count(*) FROM schema_migrations`).Scan(&count); err != nil || count != len(names) {
 		t.Fatal("upgrade history", err)
 	}
 	if err = db.QueryRowContext(ctx, `SELECT count(*) FROM pesanan WHERE id_pesanan='AUTH-LEGACY' AND total_biaya=1000`).Scan(&count); err != nil || count != 1 {

@@ -43,12 +43,25 @@ type TrackingUseCase interface {
 }
 type ReportUseCase interface {
 	Generate(context.Context, string, service.ReportPeriod) (service.ReportData, error)
+	Dashboard(context.Context, string, service.ReportPeriod) (service.DashboardReport, error)
+	OrderDetails(context.Context, string, service.ReportPeriod, repository.ReportOrderFilter) (service.OrderReport, error)
+	LedgerDetails(context.Context, string, service.ReportPeriod, repository.Page) (service.LedgerReport, error)
 }
 type AuthUseCase interface {
 	Login(context.Context, string, string) (service.LoginResult, error)
 }
 type HealthUseCase interface{ Check(context.Context) error }
+type ShiftUseCase interface {
+	Open(context.Context, string, service.ShiftOpenInput) (service.ShiftView, error)
+	Close(context.Context, string, service.ShiftCloseInput) (service.ShiftView, error)
+	Move(context.Context, string, service.CashMoveInput) (service.CashMoveResult, error)
+	Current(context.Context, string) (*service.ShiftView, error)
+	Get(context.Context, string, string) (service.ShiftView, error)
+	Daily(context.Context, string, string) (service.ShiftDay, error)
+	Entries(context.Context, string, string, repository.Page) ([]domain.LedgerEntry, error)
+}
 type Dependencies struct {
+	Shifts    ShiftUseCase
 	Staff     StaffUseCase
 	Sessions  *security.Manager
 	Customers CustomerUseCase

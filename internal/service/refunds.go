@@ -51,6 +51,10 @@ func (s *Payments) Refund(ctx context.Context, actor string, in RefundInput) (re
 		if p.ID == "" {
 			return &domain.Error{Kind: domain.NotFound, Code: "payment_not_found", Field: "payment_id", Message: "Pembayaran tidak ditemukan."}
 		}
+		shiftID, err := postingShift(ctx, tx, a.ID, p.Method, domain.Credit, p.Amount)
+		if err != nil {
+			return err
+		}
 		at, err := s.runtime.now()
 		if err != nil {
 			return err
@@ -59,7 +63,7 @@ func (s *Payments) Refund(ctx context.Context, actor string, in RefundInput) (re
 		if err != nil {
 			return err
 		}
-		r := domain.Refund{ID: id, OrderID: in.OrderID, PaymentID: p.ID, IdempotencyKey: in.IdempotencyKey, RecordedBy: a.ID, Reason: in.Reason, Amount: p.Amount, Method: p.Method, RefundedAt: at}
+		r := domain.Refund{ShiftID: shiftID, ID: id, OrderID: in.OrderID, PaymentID: p.ID, IdempotencyKey: in.IdempotencyKey, RecordedBy: a.ID, Reason: in.Reason, Amount: p.Amount, Method: p.Method, RefundedAt: at}
 		if err = o.Order.RefundPayment(r); err != nil {
 			return err
 		}

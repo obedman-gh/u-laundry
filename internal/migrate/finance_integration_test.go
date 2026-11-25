@@ -106,7 +106,7 @@ UPDATE orders SET version=version+1,updated_at='2026-11-01T01:00:00Z' WHERE id='
 					t.Fatal(err)
 				}
 				states, err := Status(ctx, db)
-				if err != nil || len(states) != 10 || states[9].AppliedAt == nil {
+				if err != nil || len(states) != 11 || states[9].AppliedAt == nil {
 					t.Fatal("schema 10 pending", err)
 				}
 				if err = Up(ctx, db); err != nil {

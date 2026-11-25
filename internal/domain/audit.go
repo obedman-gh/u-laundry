@@ -6,6 +6,10 @@ type AuditAction string
 type AuditEntity string
 
 const (
+	ShiftOpened           AuditAction = "shift_opened"
+	ShiftClosed           AuditAction = "shift_closed"
+	ShiftCashMoved        AuditAction = "shift_cash_moved"
+	ShiftEntity           AuditEntity = "shift"
 	CustomerCreated       AuditAction = "customer_created"
 	ServiceConfigured     AuditAction = "service_configured"
 	OrderCancelled        AuditAction = "order_cancelled"
@@ -37,6 +41,8 @@ const (
 
 func (a AuditAction) entity() AuditEntity {
 	switch a {
+	case ShiftOpened, ShiftClosed, ShiftCashMoved:
+		return ShiftEntity
 	case OrderCreated, OrderStatusChanged, OrderCancelled, DiscountApproved, OrderTrackingRotated:
 		return OrderEntity
 	case PaymentRecorded:

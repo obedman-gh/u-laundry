@@ -6,8 +6,8 @@ BEGIN
     IF current_database() NOT LIKE '%\_demo' ESCAPE '\' THEN
         RAISE EXCEPTION 'Catalog demo requires a disposable database ending in _demo';
     END IF;
-    IF (SELECT count(*) FROM public.schema_migrations) <> 10 THEN
-        RAISE EXCEPTION 'Apply schema version 10 before catalog demo';
+    IF (SELECT count(*) FROM public.schema_migrations) <> 11 THEN
+        RAISE EXCEPTION 'Apply schema version 11 before catalog demo';
     END IF;
     LOCK TABLE public.services,public.service_revisions IN EXCLUSIVE MODE;
     IF EXISTS(SELECT 1 FROM public.services) OR EXISTS(SELECT 1 FROM public.service_revisions)

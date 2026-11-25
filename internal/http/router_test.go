@@ -25,6 +25,38 @@ type endpointRecorder struct {
 	id   string
 }
 
+func (e *endpointRecorder) DashboardReport(w http.ResponseWriter, r *http.Request) {
+	e.record("dashboard-report", w, r)
+}
+func (e *endpointRecorder) ReportOrders(w http.ResponseWriter, r *http.Request) {
+	e.record("order-report", w, r)
+}
+func (e *endpointRecorder) ReportLedger(w http.ResponseWriter, r *http.Request) {
+	e.record("ledger-report", w, r)
+}
+
+func (e *endpointRecorder) OpenShift(w http.ResponseWriter, r *http.Request) {
+	e.record("shift-open", w, r)
+}
+func (e *endpointRecorder) CloseShift(w http.ResponseWriter, r *http.Request) {
+	e.record("shift-close", w, r)
+}
+func (e *endpointRecorder) MoveShiftCash(w http.ResponseWriter, r *http.Request) {
+	e.record("shift-cash", w, r)
+}
+func (e *endpointRecorder) CurrentShift(w http.ResponseWriter, r *http.Request) {
+	e.record("shift-current", w, r)
+}
+func (e *endpointRecorder) GetShift(w http.ResponseWriter, r *http.Request) {
+	e.record("shift-get", w, r)
+}
+func (e *endpointRecorder) DailyShifts(w http.ResponseWriter, r *http.Request) {
+	e.record("shift-daily", w, r)
+}
+func (e *endpointRecorder) ShiftEntries(w http.ResponseWriter, r *http.Request) {
+	e.record("shift-entries", w, r)
+}
+
 func (e *endpointRecorder) RefundPayment(w http.ResponseWriter, r *http.Request) {
 	e.record("refund", w, r)
 }
@@ -98,6 +130,16 @@ func TestExistingRoutes(t *testing.T) {
 		private                   bool
 	}{
 		{"GET", "/api/health", "health", "", false},
+		{"GET", "/api/laporan/dashboard", "dashboard-report", "", true},
+		{"GET", "/api/laporan/orders?kind=receivable", "order-report", "", true},
+		{"GET", "/api/laporan/ledger?format=csv", "ledger-report", "", true},
+		{"POST", "/api/shifts", "shift-open", "", true},
+		{"POST", "/api/shifts/shift-1/close", "shift-close", "shift-1", true},
+		{"POST", "/api/shifts/shift-1/cash", "shift-cash", "shift-1", true},
+		{"GET", "/api/shifts/current", "shift-current", "", true},
+		{"GET", "/api/shifts/daily?date=2026-11-25", "shift-daily", "", true},
+		{"GET", "/api/shifts/shift-1", "shift-get", "shift-1", true},
+		{"GET", "/api/shifts/shift-1/entries", "shift-entries", "shift-1", true},
 		{"GET", "/api/pesanan/ORD-123", "detail", "ORD-123", true},
 		{"GET", "/api/pesanan/ORD-123/struk", "receipt", "ORD-123", true},
 		{"GET", "/api/pesanan/ORD-123/history", "history", "ORD-123", true},

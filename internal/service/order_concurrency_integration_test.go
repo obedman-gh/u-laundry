@@ -118,6 +118,11 @@ func TestPostgresOrderConcurrency(t *testing.T) {
 		t.Fatal(err)
 	}
 	rt := Runtime{Clock: ClockFunc(func() time.Time { return fixed.Add(time.Hour) }), IDs: platform.RandomIDs{}, Tokens: platform.RandomTokens{}}
+	if err := base.WithinTransaction(ctx, func(tx repository.Tx) error {
+		return tx.AddShift(ctx, domain.CashShift{ID: "test-shift", CashierID: a.ID, OpenKey: "fixture", OpenedAt: fixed})
+	}); err != nil {
+		t.Fatal(err)
+	}
 	orders := NewOrders(base, rt)
 	payments := NewPayments(base, rt)
 	input := func(key string) OrderInput {

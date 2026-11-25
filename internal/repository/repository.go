@@ -106,6 +106,7 @@ type TrackingRegistration interface {
 }
 type LedgerTotals struct{ Inflow, Outflow domain.Money }
 type ReportQueries interface {
+	DashboardQueries
 	LedgerTotals(context.Context, time.Time, time.Time) (LedgerTotals, error)
 }
 type OrderQueries interface {
@@ -174,6 +175,7 @@ type AuditAppender interface {
 // Narrow interfaces above can be injected per use case. These compositions
 // only scope repositories to one consistent read snapshot or one atomic write.
 type Readers interface {
+	ShiftQueries
 	CustomerLookup
 	ServiceCatalog
 	OrderQueries
@@ -184,6 +186,7 @@ type Readers interface {
 	ReportQueries
 }
 type Tx interface {
+	ShiftCommands
 	Readers
 	CustomerRegistration
 	ServiceRegistration

@@ -1,4 +1,4 @@
-# Arsitektur ULaundry — hari 09
+# Arsitektur ULaundry — hari 16
 
 Go/net/http, PostgreSQL dan frontend sederhana dipertahankan. Service/use case kini aktif pada composition root dan handler. Tidak ada SQL, handle DB, atau pengaturan transaksi dalam handler. Ini belum merupakan bukti kesiapan produksi atau migrasi data operasional.
 
@@ -8,7 +8,7 @@ Go/net/http, PostgreSQL dan frontend sederhana dipertahankan. Service/use case k
 cmd/server
   -> config + platform.OpenDatabase
   -> postgres.New(pool) + clock/ID/token/password/JWT adapters
-  -> service.Customers / Catalog / Orders / Payments / Tracking / Reports / Auth / Health
+  -> service.Customers / Catalog / Orders / Payments / Shifts / Tracking / Reports / Auth / Health
   -> app.New(settings, pool, handler.Dependencies)
 
 handler -> use-case interfaces -> service -> repository contracts -> domain
@@ -26,6 +26,7 @@ middleware -> JWT validation + actor ID in context
 | Catalog | Owner/admin mengonfigurasi layanan baru atau memperbarui harga/satuan/durasi/aktif dengan lock + expected version; menyimpan audit |
 | Orders | Mengambil customer/katalog/actor tepercaya, menghitung total/snapshot domain, membuat hash tracking dan audit; change status/cancel memakai lock/version dan aturan domain |
 | Payments | Memuat actor/order, mengunci sebelum replay, memvalidasi payment/refund, lalu menyimpan receipt + ledger + version + audit dalam satu transaksi; history privat |
+| Shifts | Membuka satu shift aktif per pencatat, mengunci shift untuk mutasi/close, rekonsiliasi tunai dan laporan harian WITA; mutasi sendiri dan baca semua hanya owner/admin |
 | Tracking | Hash token valid → projection status/estimasi/milestone, tanpa ID pesanan, customer, kontak, catatan, layanan, harga atau payment |
 | Reports | Owner/admin mendapatkan cash-flow ledger periode [from,to) dan audit akses laporan; bukan menghitung pendapatan dari label status order |
 | Auth | Kredensial staf domain aktif, verifikasi bcrypt, penerbitan JWT dan audit login sukses; kegagalan username/password generik |
@@ -54,7 +55,9 @@ View memakai read-only REPEATABLE READ untuk state konsisten header/item/payment
 
 Payments mengunci order sebelum lookup key agar dua request identik tidak gagal karena saldo yang telah berubah. Replay order/key/amount/method/actor sama mengembalikan payment asli tanpa ID/audit/ledger baru. Payload bisnis berbeda menjadi conflict. Payment/ledger serta audit berada pada callback yang sama; adapter juga mengulangi pemeriksaan domain/lock sebagai pertahanan storage. UNIQUE(order_id,idempotency_key), UNIQUE ledger.payment_id dan FK komposit payment/order/amount melindungi posting. Tidak ada klaim jaminan bagi penulis SQL manual yang melanggar boundary ini.
 
-Jika commit putus dan hasilnya tidak diketahui, retry order/payment/refund dengan key dan payload semula melalui transaksi baru. Tidak ada automatic retry callback/side effect. Create customer belum memiliki idempotency key; kegagalan jaringan setelah commit harus ditinjau sebelum mengirim create customer ulang. Refund penuh satu payment tersedia sebelum pengambilan sejak schema 10; shift dan koreksi lain belum tersedia. Lihat [finance.md](finance.md).
+Jika commit putus dan hasilnya tidak diketahui, retry order/payment/refund/shift dengan key dan payload semula melalui transaksi baru. Tidak ada automatic retry callback/side effect. Create customer belum memiliki idempotency key; kegagalan jaringan setelah commit harus ditinjau sebelum mengirim create customer ulang. Refund penuh satu payment tersedia sebelum pengambilan sejak schema 10; shift dan mutasi kas tersedia sejak schema 11. Koreksi lain belum tersedia. Lihat [finance.md](finance.md).
+
+Shift memakai ledger_entries.shift_id dan receipt shift_cash_movements; payment/refund menurunkan relasi shift dari ledger immutable. Service memegang lock order lalu shift sebelum memilih waktu posting; close/mutasi hanya mengunci shift sehingga tidak membalik urutan lock. Partial UNIQUE index memastikan satu shift aktif per pencatat. Buka/tutup tidak membuat ledger uang; close menyimpan snapshot saldo/fisik/selisih dan audit atomik. Read-only REPEATABLE READ menjaga laporan beberapa query pada snapshot sama; cashier difilter actor server, owner/admin dapat membaca semua. Data historis tanpa shift/metode tetap dikenali terpisah, tanpa backfill dana fiktif. Halaman shifts memakai DOM aman, cookie/CSRF dan key retry dalam memori; tidak membuat antrean offline.
 
 Schema 10 menambah refunds append-only dan method pada ledger. Status payment refunded diturunkan dari refund; saldo detail/daftar mengecualikan receipt refunded, sementara laporan tetap menjumlahkan DEBIT/KREDIT historis. Trigger finansial mengunci order untuk guard saldo/status/waktu dan deferred constraint mewajibkan satu ledger dengan nominal/metode/actor/waktu cocok saat commit. Payment/refund/ledger menolak UPDATE/DELETE; hak runtime harus menolak TRUNCATE/DDL. Audit tetap tanggung jawab use case transaction, bukan dibuat otomatis untuk SQL manual. Refund dan cancel adalah dua transaksi terpisah yang keduanya memeriksa invarian terkini.
 
@@ -71,6 +74,8 @@ Handler membatasi JSON UTF-8 64 KiB, membutuhkan application/json, menolak unkno
 Report default adalah hari berjalan WITA; rentang eksplisit RFC3339 diperbolehkan dengan batas akhir eksklusif. Inflow/outflow int64 nonnegatif; saldo dapat negatif. Satu query agregat memakai snapshot statement yang sama, kemudian audit report dalam transaksi. Overflow/kegagalan scan tidak diubah menjadi nol. Ini buku kas sederhana, bukan double-entry atau laporan revenue akrual.
 
 ## Storage dan kompatibilitas deployment
+
+Dashboard/laporan Hari 16 memakai port `DashboardQueries` dan projection minimum order/ledger. `Reports` membaca semua query satu laporan lewat `View` REPEATABLE READ, lalu menulis audit dalam transaksi terpisah dengan pengecekan ulang izin sebelum hasil dikirim. Kegagalan query/read commit/audit menahan seluruh respons. Lima query dashboard tetap, tanpa loop query per order/shift. Handler hanya memetakan DTO atau encoding CSV berhalaman; SQL dan penghitungan uang tetap di adapter/service. Tidak ada dependency/schema baru. Laporan periode transaksi dan keadaan saat ini dibedakan pada [reports.md](reports.md); `/neraca` existing tetap memakai alur sebelumnya.
 
 Migration 000004 menambah version layanan, order_tracking_tokens dan perluasan allowed audit actions. Constraint audit diganti dengan superset yang tetap menerima event lama; tabel/row/ID/sequence legacy tidak dikonversi atau dihapus. Migration 000001–000003 tetap immutable. Audit UPDATE/DELETE diblok trigger; hak TRUNCATE/DDL tetap harus dibatasi saat deployment.
 

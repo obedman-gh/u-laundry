@@ -9,11 +9,11 @@ import (
 	"ulaundry/internal/repository"
 )
 
-const refundColumns = `id,order_id,payment_id,idempotency_key,amount,method,recorded_by,refunded_at,reason`
+const refundColumns = `id,order_id,payment_id,idempotency_key,amount,method,recorded_by,refunded_at,reason,COALESCE((SELECT l.shift_id FROM public.ledger_entries l WHERE l.refund_id=refunds.id),'')`
 
 func scanRefund(ctx context.Context, row scanner) (domain.Refund, error) {
 	var r domain.Refund
-	if err := row.Scan(&r.ID, &r.OrderID, &r.PaymentID, &r.IdempotencyKey, &r.Amount, &r.Method, &r.RecordedBy, &r.RefundedAt, &r.Reason); err != nil {
+	if err := row.Scan(&r.ID, &r.OrderID, &r.PaymentID, &r.IdempotencyKey, &r.Amount, &r.Method, &r.RecordedBy, &r.RefundedAt, &r.Reason, &r.ShiftID); err != nil {
 		return r, dbError(ctx, "read refund", err)
 	}
 	if r.Validate() != nil {
@@ -61,11 +61,15 @@ func (s *session) RecordRefund(ctx context.Context, r domain.Refund, ledgerID st
 	if err := o.Order.RefundPayment(r); err != nil {
 		return repository.RefundResult{}, err
 	}
+	r.ShiftID, err = s.LockPostingShift(ctx, r.RecordedBy, r.Method)
+	if err != nil {
+		return repository.RefundResult{}, err
+	}
 	ledger, err := domain.NewRefundLedger(ledgerID, r)
 	if err != nil {
 		return repository.RefundResult{}, err
 	}
-	if _, err = s.tx.ExecContext(ctx, `INSERT INTO public.refunds (`+refundColumns+`)VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, r.ID, r.OrderID, r.PaymentID, r.IdempotencyKey, r.Amount, r.Method, r.RecordedBy, r.RefundedAt, r.Reason); err != nil {
+	if _, err = s.tx.ExecContext(ctx, `INSERT INTO public.refunds (id,order_id,payment_id,idempotency_key,amount,method,recorded_by,refunded_at,reason)VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`, r.ID, r.OrderID, r.PaymentID, r.IdempotencyKey, r.Amount, r.Method, r.RecordedBy, r.RefundedAt, r.Reason); err != nil {
 		return repository.RefundResult{}, dbError(ctx, "record refund", err)
 	}
 	if err := s.insertLedger(ctx, ledger); err != nil {

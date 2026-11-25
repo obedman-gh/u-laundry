@@ -87,6 +87,13 @@ func TestPostgresFinancePaymentsAndRefunds(t *testing.T) {
 		t.Fatal(err)
 	}
 	rt := Runtime{Clock: ClockFunc(func() time.Time { return fixed.Add(time.Hour) }), IDs: platform.RandomIDs{}, Tokens: platform.RandomTokens{}}
+	for _, actor := range []string{owner.ID, cashier.ID} {
+		if err := base.WithinTransaction(ctx, func(tx repository.Tx) error {
+			return tx.AddShift(ctx, domain.CashShift{ID: "shift-" + actor, CashierID: actor, OpenKey: "fixture", Opening: 1000000, OpenedAt: fixed})
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
 	orders, payments := NewOrders(base, rt), NewPayments(base, rt)
 	create := func(key string) string {
 		t.Helper()
@@ -376,7 +383,7 @@ func TestPostgresFinancePaymentsAndRefunds(t *testing.T) {
 					}()
 					method, actor, at := domain.QRIS, owner.ID, rt.Clock.Now()
 					if mismatch == "method" {
-						method = domain.Cash
+						method = domain.BankTransfer
 					}
 					if mismatch == "actor" {
 						actor = cashier.ID

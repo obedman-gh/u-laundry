@@ -11,6 +11,16 @@ import (
 
 // Endpoints allows routing to be checked independently of SQL and bootstrap.
 type Endpoints interface {
+	DashboardReport(http.ResponseWriter, *http.Request)
+	ReportOrders(http.ResponseWriter, *http.Request)
+	ReportLedger(http.ResponseWriter, *http.Request)
+	OpenShift(http.ResponseWriter, *http.Request)
+	CloseShift(http.ResponseWriter, *http.Request)
+	MoveShiftCash(http.ResponseWriter, *http.Request)
+	CurrentShift(http.ResponseWriter, *http.Request)
+	GetShift(http.ResponseWriter, *http.Request)
+	DailyShifts(http.ResponseWriter, *http.Request)
+	ShiftEntries(http.ResponseWriter, *http.Request)
 	RefundPayment(http.ResponseWriter, *http.Request)
 	ListPayments(http.ResponseWriter, *http.Request)
 	ListRefunds(http.ResponseWriter, *http.Request)
@@ -69,6 +79,16 @@ func NewRouter(h Endpoints, m *middleware.Middleware, assets http.FileSystem) ht
 		})
 	}
 	register("/api/health", map[string]http.HandlerFunc{"GET": h.HealthCheck})
+	register("/api/laporan/dashboard", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.DashboardReport)})
+	register("/api/laporan/orders", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.ReportOrders)})
+	register("/api/laporan/ledger", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.ReportLedger)})
+	register("/api/shifts", map[string]http.HandlerFunc{"POST": m.ValidasiJWT(h.OpenShift)})
+	register("/api/shifts/current", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.CurrentShift)})
+	register("/api/shifts/daily", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.DailyShifts)})
+	register("/api/shifts/{id}", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.GetShift)})
+	register("/api/shifts/{id}/close", map[string]http.HandlerFunc{"POST": m.ValidasiJWT(h.CloseShift)})
+	register("/api/shifts/{id}/cash", map[string]http.HandlerFunc{"POST": m.ValidasiJWT(h.MoveShiftCash)})
+	register("/api/shifts/{id}/entries", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.ShiftEntries)})
 	register("/api/login", map[string]http.HandlerFunc{"POST": h.Login})
 	register("/api/session", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.CurrentSession)})
 	register("/api/logout", map[string]http.HandlerFunc{"POST": m.ValidasiJWT(h.Logout)})

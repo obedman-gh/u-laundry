@@ -68,7 +68,7 @@ Replay command sukses dengan key dan payload semula tidak mengulangi efek, menge
 - Harga existing — migration 000008 menambahkan urutan dan satu baseline pada versi yang sedang tersimpan. Baseline hanya keadaan pertama yang diamati; harga sebelum baseline tidak direkonstruksi. `source=staff` memiliki changed_by; baseline/demo tanpa actor. Histori tidak menyimpan profil atau kontak pelanggan.
 - Snapshot — order_items menyimpan service_id, service_name, unit, unit_price, pieces/grams dan line_total; orders menyimpan subtotal, discount, alasan/pemberi persetujuan, total dan estimasi. Pembacaan/struk memvalidasi snapshot tersimpan tanpa menghitung ulang dari katalog. Perubahan nama/satuan/harga/durasi/nonaktif tidak mengubah order lama.
 - Konkurensi — order mengunci layanan menurut ID terurut sebelum menghitung snapshot; konfigurasi mengunci row yang sama dengan expected version. Order yang sudah memegang lock memakai harga saat itu; editor menunggu commit. Order setelah editor commit memakai nilai baru. Semua snapshot dan audit order disimpan atomik.
-- Data contoh — `scripts/catalog-demo.sql` terpisah dari migration, hanya membuat tiga layanan sintetis dan revisi demo, tanpa akun, kredensial, pelanggan atau transaksi. Script menolak database tanpa akhiran `_demo`, schema selain versi 10, data bisnis existing dan pemanggilan ulang. `scripts/demo.sql` lama khusus tabel legacy, bukan seed server domain; guard schema-nya juga mengikuti versi 10.
+- Data contoh — `scripts/catalog-demo.sql` terpisah dari migration, hanya membuat tiga layanan sintetis dan revisi demo, tanpa akun, kredensial, pelanggan atau transaksi. Script menolak database tanpa akhiran `_demo`, schema selain versi 11, data bisnis existing dan pemanggilan ulang. `scripts/demo.sql` lama khusus tabel legacy, bukan seed server domain; guard schema-nya juga mengikuti versi 11.
 
 ## Validasi data dan waktu
 
@@ -79,6 +79,14 @@ Replay command sukses dengan key dan payload semula tidak mengulangi efek, menge
 - Created/updated time wajib, updated tidak boleh lebih awal. Estimasi order opsional saat input; jika kosong dihitung dari waktu penerimaan + durasi layanan terlama pada item. Override estimasi harus sesudah penerimaan; estimasi yang sudah terlewat saat order kemudian dibaca tetap sah sebagai order terlambat.
 
 ## Pembayaran, buku kas dan audit
+
+### Shift dan kas harian — Hari 15
+
+Satu shift aktif per staf. Owner/admin/cashier mengelola shift sendiri; owner/admin membaca semua, cashier membaca miliknya. Saldo awal/fisik integer rupiah non-negatif, transaksi masuk/keluar positif. Buka/tutup tidak mem-posting pendapatan. Shift tertutup immutable; tidak ada force-close, reopen, auto-close tengah malam atau pemindahan saldo otomatis. Setiap command memiliki key idempotensi dan audit atomik.
+
+Saldo sistem = saldo awal + pembayaran tunai − refund tunai + cash in − cash out. Mutasi cash in/out memerlukan alasan; kas keluar/refund ditolak bila saldo tidak cukup. Non-tunai tidak mengubah laci. Tutup menyimpan saldo sistem, fisik, selisih fisik − sistem, waktu, catatan dan user penutup. Selisih bukan posting koreksi; alasan wajib bila berbeda nol.
+
+Payment/refund tunai baru wajib terkait shift aktif milik pencatat; refund dari owner/admin dapat memakai shift berbeda dari penerimaan awal dan tidak mengubah shift tertutup. Non-tunai terkait shift aktif jika tersedia, selain itu direkonsiliasi pada laporan harian tanpa shift. Data historis tidak diberi shift buatan; metode yang tidak diketahui ditandai terpisah. Laporan tanggal WITA membatasi transaksi harian, sementara baris shift memuat total sepanjang sesi dan mencakup sesi lintas tengah malam. Rincian izin, retry/concurrency, cash movement dan rollback ada di [finance.md](finance.md).
 
 `Order.RecordPayment` menerima pembayaran positif berstatus posted dalam cash/bank_transfer/qris yang dicatat manual. Menolak order berbeda, ID/key berulang dalam instance, waktu sebelum pembaruan terakhir, order ditutup, atau nominal melebihi sisa tagihan. DP parsial diperbolehkan; nominal adalah uang yang diterapkan ke tagihan, bukan uang tunai diserahkan sebelum kembalian. Belum ada kalkulasi kembalian atau integrasi penyedia pembayaran. Refund penuh satu receipt oleh owner/admin tersedia sebelum pengambilan; payment menjadi refunded pada projection tanpa menimpa receipt asal. Saldo net mengabaikan receipt refunded, pembayaran ulang wajib key baru.
 

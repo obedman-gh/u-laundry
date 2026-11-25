@@ -77,6 +77,7 @@ type OrderStatusEventResponse struct {
 	Source     string    `json:"source"`
 }
 type PaymentResponse struct {
+	ShiftID        string    `json:"shift_id,omitempty"`
 	ID             string    `json:"payment_id"`
 	Amount         int64     `json:"amount"`
 	OrderID        string    `json:"order_id"`
@@ -88,6 +89,7 @@ type PaymentResponse struct {
 	Replayed       bool      `json:"replayed"`
 }
 type RefundResponse struct {
+	ShiftID        string    `json:"shift_id,omitempty"`
 	ID             string    `json:"refund_id"`
 	OrderID        string    `json:"order_id"`
 	PaymentID      string    `json:"payment_id"`

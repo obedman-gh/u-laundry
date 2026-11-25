@@ -10,10 +10,10 @@ import (
 )
 
 func paymentView(p domain.Payment, replayed bool) dto.PaymentResponse {
-	return dto.PaymentResponse{ID: p.ID, OrderID: p.OrderID, Amount: int64(p.Amount), Method: string(p.Method), ReceivedAt: p.ReceivedAt, CashierID: p.RecordedBy, Status: string(p.Status), IdempotencyKey: p.IdempotencyKey, Replayed: replayed}
+	return dto.PaymentResponse{ShiftID: p.ShiftID, ID: p.ID, OrderID: p.OrderID, Amount: int64(p.Amount), Method: string(p.Method), ReceivedAt: p.ReceivedAt, CashierID: p.RecordedBy, Status: string(p.Status), IdempotencyKey: p.IdempotencyKey, Replayed: replayed}
 }
 func refundView(r domain.Refund, replayed bool) dto.RefundResponse {
-	return dto.RefundResponse{ID: r.ID, OrderID: r.OrderID, PaymentID: r.PaymentID, Amount: int64(r.Amount), Method: string(r.Method), RefundedAt: r.RefundedAt, CashierID: r.RecordedBy, Status: "posted", IdempotencyKey: r.IdempotencyKey, Reason: r.Reason, Replayed: replayed}
+	return dto.RefundResponse{ShiftID: r.ShiftID, ID: r.ID, OrderID: r.OrderID, PaymentID: r.PaymentID, Amount: int64(r.Amount), Method: string(r.Method), RefundedAt: r.RefundedAt, CashierID: r.RecordedBy, Status: "posted", IdempotencyKey: r.IdempotencyKey, Reason: r.Reason, Replayed: replayed}
 }
 func (h *Handler) RefundPayment(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r)

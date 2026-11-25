@@ -28,6 +28,7 @@ const (
 // Payment is a recorded positive receipt, not a pending gateway transaction.
 // ReceivedAt and RecordedBy are supplied by the trusted server use case.
 type Payment struct {
+	ShiftID                                 string
 	ID, OrderID, IdempotencyKey, RecordedBy string
 	Amount                                  Money
 	Method                                  PaymentMethod
@@ -36,6 +37,11 @@ type Payment struct {
 }
 
 func (p Payment) Validate() error {
+	if p.ShiftID != "" {
+		if err := identifier("payment.shift_id", p.ShiftID); err != nil {
+			return err
+		}
+	}
 	for _, item := range []struct{ field, value string }{
 		{"payment.id", p.ID}, {"payment.order_id", p.OrderID},
 		{"payment.idempotency_key", p.IdempotencyKey}, {"payment.recorded_by", p.RecordedBy},
@@ -67,6 +73,7 @@ const (
 )
 
 type LedgerEntry struct {
+	ShiftID                                                   string
 	ID, OrderID, PaymentID, RefundID, RecordedBy, Description string
 	Type                                                      LedgerType
 	Method                                                    PaymentMethod
@@ -75,6 +82,11 @@ type LedgerEntry struct {
 }
 
 func (e LedgerEntry) Validate() error {
+	if e.ShiftID != "" {
+		if err := identifier("shift_id", e.ShiftID); err != nil {
+			return err
+		}
+	}
 	if err := identifier("ledger.id", e.ID); err != nil {
 		return err
 	}
@@ -129,7 +141,7 @@ func NewPaymentLedger(id string, payment Payment) (LedgerEntry, error) {
 	if payment.Status != PaymentPosted {
 		return LedgerEntry{}, invalid("payment.status", "Posting hanya untuk pembayaran baru.")
 	}
-	entry := LedgerEntry{ID: id, OrderID: payment.OrderID, PaymentID: payment.ID, RecordedBy: payment.RecordedBy, Description: "Penerimaan pembayaran pesanan", Type: Debit, Method: payment.Method, Amount: payment.Amount, OccurredAt: payment.ReceivedAt}
+	entry := LedgerEntry{ShiftID: payment.ShiftID, ID: id, OrderID: payment.OrderID, PaymentID: payment.ID, RecordedBy: payment.RecordedBy, Description: "Penerimaan pembayaran pesanan", Type: Debit, Method: payment.Method, Amount: payment.Amount, OccurredAt: payment.ReceivedAt}
 	if err := entry.Validate(); err != nil {
 		return LedgerEntry{}, err
 	}
@@ -139,6 +151,7 @@ func NewPaymentLedger(id string, payment Payment) (LedgerEntry, error) {
 // Refund reverses one complete payment. Both records and their ledger entries
 // remain immutable. The returned payment status is derived from this record.
 type Refund struct {
+	ShiftID                                                    string
 	ID, OrderID, PaymentID, IdempotencyKey, RecordedBy, Reason string
 	Amount                                                     Money
 	Method                                                     PaymentMethod
@@ -146,6 +159,11 @@ type Refund struct {
 }
 
 func (r Refund) Validate() error {
+	if r.ShiftID != "" {
+		if err := identifier("refund.shift_id", r.ShiftID); err != nil {
+			return err
+		}
+	}
 	for _, v := range []struct{ field, value string }{{"refund.id", r.ID}, {"refund.order_id", r.OrderID}, {"refund.payment_id", r.PaymentID}, {"refund.idempotency_key", r.IdempotencyKey}, {"refund.recorded_by", r.RecordedBy}} {
 		if err := identifier(v.field, v.value); err != nil {
 			return err
@@ -161,6 +179,6 @@ func NewRefundLedger(id string, r Refund) (LedgerEntry, error) {
 	if err := r.Validate(); err != nil {
 		return LedgerEntry{}, err
 	}
-	e := LedgerEntry{ID: id, OrderID: r.OrderID, RefundID: r.ID, RecordedBy: r.RecordedBy, Description: "Pengembalian pembayaran pesanan", Type: Credit, Method: r.Method, Amount: r.Amount, OccurredAt: r.RefundedAt}
+	e := LedgerEntry{ShiftID: r.ShiftID, ID: id, OrderID: r.OrderID, RefundID: r.ID, RecordedBy: r.RecordedBy, Description: "Pengembalian pembayaran pesanan", Type: Credit, Method: r.Method, Amount: r.Amount, OccurredAt: r.RefundedAt}
 	return e, e.Validate()
 }
