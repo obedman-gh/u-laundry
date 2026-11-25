@@ -2,7 +2,7 @@
 
 ULaundry adalah aplikasi operasional laundry. Stack: Go (`net/http`), PostgreSQL, HTML, CSS, dan JavaScript tanpa framework frontend besar.
 
-Status per 25 November 2026: **UI POS/pembuatan pesanan tahap 20 tersedia, belum layak produksi**. Lihat [komponen/tokens UI](docs/ui.md), [arsitektur](docs/architecture.md), [kontrak API dan perubahan kompatibilitas](docs/api.md), [aturan bisnis](docs/business-rules.md), [aturan finansial](docs/finance.md), [laporan operasional](docs/reports.md), [database](docs/database.md), [audit trail](docs/audit.md), [audit baseline](docs/audit-baseline.md), [kriteria penerimaan](docs/acceptance-criteria.md), [backlog](docs/backlog-30-days.md), [laporan hari 20](docs/progress/day-20.md) dan [keamanan autentikasi](docs/security.md).
+Status per 26 November 2026: **UI antrean/detail/transaksi/receipt tahap 21 tersedia, belum layak produksi**. Lihat [komponen/tokens UI](docs/ui.md), [arsitektur](docs/architecture.md), [kontrak API dan perubahan kompatibilitas](docs/api.md), [aturan bisnis](docs/business-rules.md), [aturan finansial](docs/finance.md), [laporan operasional](docs/reports.md), [database](docs/database.md), [audit trail](docs/audit.md), [audit baseline](docs/audit-baseline.md), [kriteria penerimaan](docs/acceptance-criteria.md), [backlog](docs/backlog-30-days.md), [laporan hari 21](docs/progress/day-21.md) dan [keamanan autentikasi](docs/security.md).
 
 ## Implementasi saat ini
 
@@ -14,11 +14,12 @@ Status per 25 November 2026: **UI POS/pembuatan pesanan tahap 20 tersedia, belum
 - Create, perubahan status dan pembatalan order wajib `Idempotency-Key`; retry identik oleh staf yang sama mengembalikan keadaan order terkini tanpa mengulang efek. Riwayat status privat dan milestone mulai proses tersedia.
 - `/pos.html` menyediakan cari/buat pelanggan, baris layanan kg/item, perkiraan harga, diskon owner/admin, estimasi WITA, catatan, submit idempotent dan hasil/tautan struk. Total final berasal dari server; hasil tidak pasti dikunci untuk retry key/body identik. Draft/key hanya dalam memori tab; setelah reload paksa, periksa antrean sebelum memasukkan ulang.
 - Endpoint payment/refund terpisah, receipt-ledger-audit satu transaksi, replay key identik tanpa posting ulang; DP/metode campuran dan refund penuh owner/admin sebelum pengambilan tersedia. Receipt/ledger append-only; `Sudah Lunas` bukan status operasional.
-- Struk staf terautentikasi dan HTML escaping; printer fisik 58/80mm belum diverifikasi. Tracking publik memakai token acak dengan hash tersimpan dan projection minimal.
+- Antrean menyediakan search global ID/nama, status filter, pagination, overdue, detail/aksi berversi serta pembayaran/refund sesuai izin. Konflik memerlukan refresh; submit/retry payment memakai key/body tetap dan hasil idempotent. Key hanya bertahan dalam memori tab.
+- Struk staf terautentikasi dengan HTML escaping dan preview thermal 58/80mm; printer fisik belum diverifikasi. Tracking publik memakai token acak dengan hash tersimpan dan projection minimal.
 - Data laporan buku kas per rentang tanggal (default hari berjalan WITA), hanya owner/admin dan diaudit.
 - Owner membaca riwayat bisnis/keamanan di `/audit.html`, dengan filter tanggal/aksi/pelaku/target/request ID dan pagination. Metadata dibatasi; UPDATE/DELETE/TRUNCATE audit ditolak. Read audit sekarang owner-only, termasuk endpoint objek lama; admin/cashier ditolak.
 - Backend `/api/laporan/dashboard`, `/orders` dan `/ledger`: order/periode, antrean saat ini, piutang, keterlambatan, layanan populer, penerimaan/refund/metode dan shift. Dashboard awal owner/admin tersedia di `/dashboard.html`; filter/detail/CSV UI laporan menyusul Hari 22. Pembayaran/ledger menjadi sumber omzet, terpisah dari mutasi laci.
-- Sepuluh halaman memakai tokens warna existing, navigasi desktop/ponsel, form/card/table/list, fokus keyboard dan feedback bersama. Login/antrean memakai script terpisah; `/shifts.html` tetap menyediakan buka/mutasi/tutup kas dan ringkasan cetak. Penyempurnaan antrean/receipt serta UI pembayaran/laporan lengkap masih mengikuti tahap berikutnya.
+- Sepuluh halaman memakai tokens warna existing, navigasi desktop/ponsel, form/card/table/list, fokus keyboard dan feedback bersama. Login/antrean memakai script terpisah; `/shifts.html` tetap menyediakan buka/mutasi/tutup kas dan ringkasan cetak. Antrean/receipt dan UI pembayaran tersedia; UI laporan lengkap tetap Hari 22.
 - Migration 000005 menambah sesi/audit autentikasi dan pencabutan saat credential/role/status berubah; tidak mengubah data legacy.
 - `/api/health` memeriksa database (503 bila tidak tersedia); belum ada pemisahan liveness/readiness.
 - Error API seragam `error.code/message/request_id`, request ID server, batas JSON 64 KiB/UTF-8, penolakan field asing/duplikat, 404 API dan 405 dengan Allow; pesan login memahami kontrak baru.
@@ -239,3 +240,13 @@ go test -race ./internal/service -run '^TestPostgresOrderConcurrency$' -count=1 
 ```
 
 Hasil dan batas verifikasi aktual ada di [laporan hari 13](docs/progress/day-13.md). Race belum terverifikasi karena gcc tidak tersedia pada sesi Windows ini; UI/printer/deployment tidak diuji pada tahap backend ini.
+
+## Verifikasi antrean/receipt Hari 21
+
+Perintah frontend tetap satu script resmi; gunakan filter untuk scope antrean. PostgreSQL wajib cluster test khusus dan helper DB disposable. Perintah HTTP/PostgreSQL terarah serta checklist browser/print tercantum di [docs/ui.md](docs/ui.md); jangan menjalankan full suite untuk perubahan visual saja.
+
+```powershell
+node --test --test-name-pattern=queue scripts/frontend-contract.test.cjs
+# Dengan ULAUNDRY_TEST_ADMIN_DSN eksplisit pada cluster test khusus:
+go test ./internal/service -run '^TestPostgres(QueueSearch|OrderConcurrency|FinancePaymentsAndRefunds)$' -count=1 -timeout=120s -v
+```

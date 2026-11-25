@@ -3,10 +3,29 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Antrean — ULaundry Perumahan Viola</title>
   <link rel="stylesheet" href="/ui/tokens.css"><link rel="stylesheet" href="/ui/ui.css">
+  <link rel="stylesheet" href="/queue.css">
   <script src="/ui/ui.js" defer></script>
-  <script src="/ui/session.js" defer></script><script src="/queue.js" defer></script>
+  <script src="/ui/session.js" defer></script><script src="/queue-model.js" defer></script><script src="/queue.js" defer></script>
 <link rel="icon" href="/ui/favicon.svg" type="image/svg+xml"></head><body data-staff-app data-page="orders"><main>
   <div class="page-heading"><div><h1>Daftar antrean</h1><p class="muted">Pesanan dan status layanan ULaundry.</p></div><div class="toolbar"><a class="button" href="/pos.html">Pesanan baru</a><button id="refresh-orders" type="button" class="secondary">Muat ulang</button></div></div>
-  <section aria-label="Daftar pesanan"><div id="tempat-pesanan" class="order-list" aria-live="polite" aria-busy="true">Memuat antrean…</div></section>
+  <form id="queue-filter" class="card" aria-label="Filter antrean">
+    <div class="fields"><label for="queue-search">Cari ID atau nama pelanggan<input id="queue-search" type="search" maxlength="100" autocomplete="off"></label>
+    <label for="queue-status">Status pesanan<select id="queue-status"><option value="">Semua status</option><option value="received">Diterima</option><option value="processing">Diproses</option><option value="ready">Siap diambil</option><option value="collected">Sudah diambil</option><option value="cancelled">Dibatalkan</option></select></label></div>
+    <button id="apply-filter" type="submit">Terapkan filter</button><p class="muted">20 pesanan per halaman, terbaru lebih dahulu. Terlambat berarti estimasi lewat dan masih diterima/diproses.</p>
+  </form>
+  <p id="queue-message" class="ui-alert" role="status"></p>
+  <section aria-label="Daftar pesanan"><div id="tempat-pesanan" class="order-list" aria-live="polite" aria-busy="true">Memuat antrean…</div>
+  <nav class="pager" aria-label="Halaman antrean"><button id="queue-prev" type="button" class="secondary" disabled>Sebelumnya</button><span id="queue-page">Halaman 1</span><button id="queue-next" type="button" class="secondary" disabled>Berikutnya</button></nav></section>
+  <section id="order-detail" class="card" aria-labelledby="detail-title" hidden>
+    <div class="page-heading"><h2 id="detail-title" tabindex="-1">Detail pesanan</h2><div class="toolbar"><button id="refresh-detail" type="button" class="secondary">Muat ulang detail</button><button id="close-detail" type="button" class="secondary">Tutup detail</button></div></div>
+    <p id="detail-message" class="ui-alert" role="status"></p><div id="detail-summary"></div>
+    <div class="toolbar"><a id="receipt-58" class="button secondary" target="_blank" rel="noopener noreferrer">Struk 58 mm</a><a id="receipt-80" class="button secondary" target="_blank" rel="noopener noreferrer">Struk 80 mm</a></div>
+    <h3>Perbarui status</h3><div id="status-actions" class="toolbar"></div><p id="status-help" class="muted"></p>
+    <form id="cancel-form" hidden><label for="cancel-reason">Alasan pembatalan<input id="cancel-reason" required maxlength="250"></label><button type="submit">Batalkan pesanan</button></form>
+    <form id="payment-form" hidden><h3>Catat pembayaran</h3><p>Nominal rupiah bulat. Tunai memerlukan shift aktif milik pencatat.</p><div class="fields"><label for="payment-amount">Nominal (Rp)<input id="payment-amount" inputmode="numeric" required pattern="[0-9]+" maxlength="16" autocomplete="off"></label><label for="payment-method">Metode<select id="payment-method"><option value="cash">Tunai</option><option value="bank_transfer">Transfer bank</option><option value="qris">QRIS</option></select></label></div><button id="save-payment" type="submit">Simpan pembayaran</button></form>
+    <div id="command-result" class="ui-alert" role="status"></div><button id="retry-command" type="button" hidden>Periksa / kirim ulang permintaan yang sama</button>
+    <h3>Riwayat pembayaran</h3><ul id="payment-list" class="data-list"></ul><button id="more-payments" class="secondary" type="button" hidden>Muat pembayaran berikutnya</button>
+    <form id="refund-form" hidden><h3>Refund penuh</h3><p id="refund-selection"></p><label for="refund-reason">Alasan refund<input id="refund-reason" required maxlength="250"></label><button id="save-refund" type="submit">Konfirmasi refund penuh</button><button id="cancel-refund" type="button" class="secondary">Batal</button></form>
+  </section>
   <noscript><p class="ui-alert">Aktifkan JavaScript untuk memuat antrean dan navigasi staf.</p></noscript>
 </main></body></html>

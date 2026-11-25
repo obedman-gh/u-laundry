@@ -247,8 +247,13 @@ type OrderListItem struct {
 }
 
 func (s *Orders) List(ctx context.Context, actor string, filter repository.OrderFilter) ([]OrderListItem, error) {
+	term, err := domain.OrderSearch(filter.Search)
+	if err != nil {
+		return nil, err
+	}
+	filter.Search = term
 	var result []repository.OrderSummary
-	err := s.uow.View(ctx, func(r repository.Readers) error {
+	err = s.uow.View(ctx, func(r repository.Readers) error {
 		if _, err := authorize(ctx, r, actor, ReadOrders); err != nil {
 			return err
 		}

@@ -46,24 +46,28 @@ type OrderItemResponse struct {
 	LineTotal int64  `json:"line_total"`
 }
 type OrderResponse struct {
-	ID               string              `json:"id_pesanan"`
-	Customer         string              `json:"nama_customer"`
-	Services         string              `json:"layanan"`
-	Total            int64               `json:"total_biaya"`
-	Status           string              `json:"status"`
-	PaymentStatus    string              `json:"payment_status"`
-	Version          int64               `json:"version"`
-	CreatedAt        time.Time           `json:"waktu_pesan"`
-	EstimatedReadyAt time.Time           `json:"waktu_perkiraan_selesai"`
-	ReadyAt          *time.Time          `json:"waktu_selesai_real"`
-	ProcessingAt     *time.Time          `json:"processing_at"`
-	CollectedAt      *time.Time          `json:"collected_at"`
-	CancelledAt      *time.Time          `json:"cancelled_at"`
-	Replayed         bool                `json:"replayed,omitempty"`
-	AppliedVersion   int64               `json:"applied_version,omitempty"`
-	Items            []OrderItemResponse `json:"items,omitempty"`
-	Subtotal         *int64              `json:"subtotal,omitempty"`
-	Discount         *int64              `json:"discount,omitempty"`
+	Paid               int64               `json:"paid"`
+	Balance            int64               `json:"balance"`
+	Notes              string              `json:"notes,omitempty"`
+	CancellationReason string              `json:"cancellation_reason,omitempty"`
+	ID                 string              `json:"id_pesanan"`
+	Customer           string              `json:"nama_customer"`
+	Services           string              `json:"layanan"`
+	Total              int64               `json:"total_biaya"`
+	Status             string              `json:"status"`
+	PaymentStatus      string              `json:"payment_status"`
+	Version            int64               `json:"version"`
+	CreatedAt          time.Time           `json:"waktu_pesan"`
+	EstimatedReadyAt   time.Time           `json:"waktu_perkiraan_selesai"`
+	ReadyAt            *time.Time          `json:"waktu_selesai_real"`
+	ProcessingAt       *time.Time          `json:"processing_at"`
+	CollectedAt        *time.Time          `json:"collected_at"`
+	CancelledAt        *time.Time          `json:"cancelled_at"`
+	Replayed           bool                `json:"replayed,omitempty"`
+	AppliedVersion     int64               `json:"applied_version,omitempty"`
+	Items              []OrderItemResponse `json:"items,omitempty"`
+	Subtotal           *int64              `json:"subtotal,omitempty"`
+	Discount           *int64              `json:"discount,omitempty"`
 }
 type CreatedOrderResponse struct {
 	Order             OrderResponse `json:"order"`

@@ -26,6 +26,7 @@ type OrderFilter struct {
 	Page       Page
 	Status     domain.OrderStatus // Empty means all statuses; otherwise strict enum.
 	CustomerID string
+	Search     string // Literal, case-insensitive substring of ID or customer snapshot name.
 }
 type OrderRecord struct {
 	Order          domain.Order

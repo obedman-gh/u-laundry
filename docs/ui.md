@@ -1,6 +1,6 @@
-# UI ULaundry — Hari 18–20
+# UI ULaundry — Hari 18–21
 
-Fondasi bersama memakai HTML semantik, CSS dan JavaScript tanpa framework/build frontend. Identitas ULaundry/Perumahan Viola dan palet existing dipertahankan. Sepuluh halaman memakai tokens bersama: login, antrean, POS, dashboard, pelanggan, layanan, staf, kas/shift, audit dan tracking. Go, API, konfigurasi dan migration tidak berubah; schema tetap 12.
+Fondasi bersama memakai HTML semantik, CSS dan JavaScript tanpa framework/build frontend. Identitas ULaundry/Perumahan Viola dan palet existing dipertahankan. Sepuluh halaman memakai tokens bersama: login, antrean, POS, dashboard, pelanggan, layanan, staf, kas/shift, audit dan tracking. Hari 21 menambah search API, saldo/proyeksi detail dan receipt thermal; konfigurasi dan migration tetap, schema 12.
 
 ## Tokens dan asal warna
 
@@ -41,7 +41,9 @@ frontend/
   ui/favicon.svg     favicon lokal dalam palet existing
   login.html/js      login dan toggle kata sandi
   index.html         antrean, URL / tetap
-  queue.js           handler antrean existing yang diekstrak dari HTML
+  queue.js/css       antrean, detail, status, pembayaran/refund dan lifecycle command
+  queue-model.js     validasi snapshot, izin, nominal dan keterlambatan
+  receipt.js/css     kontrol cetak dan lebar fisik struk privat dari handler Go
   pos.html/js/css    alur pembuatan pesanan dan hasil/tautan struk
   pos-model.js       validasi, konversi gram dan perkiraan katalog integer
   dashboard.html/js  ringkasan awal owner/admin
@@ -103,7 +105,7 @@ Helper hanya membentuk elemen dan textContent, tanpa innerHTML atau template str
 
 `/dashboard.html` adalah fondasi ringkasan owner/admin: pesanan hari ini, penerimaan, piutang, shift aktif, status antrean dan net setelah refund. Data berasal dari `/api/laporan/dashboard` existing, tanpa nilai demo/fallback dalam source aplikasi. Sebelum data valid tidak ada angka sementara; kegagalan menyembunyikan angka lama dan menawarkan retry. Bilangan harus aman ditampilkan sebagai integer JavaScript.
 
-Kasir yang membuka URL tersebut mendapat petunjuk menuju alur operasional tanpa request laporan sensitif. Halaman tidak melakukan polling; refresh membaca laporan dan mengikuti audit server existing. Filter periode, detail laporan, CSV serta penerimaan UI finansial lengkap tetap Hari 22. UI login/sesi/staf diverifikasi pada Hari 19 dan pembuatan order pada Hari 20; antrean/progres/receipt lengkap tetap Hari 21. Verifikasi browser mock belum menutup AC15 atau kesiapan produksi seluruh aplikasi.
+Kasir yang membuka URL tersebut mendapat petunjuk menuju alur operasional tanpa request laporan sensitif. Halaman tidak melakukan polling; refresh membaca laporan dan mengikuti audit server existing. Filter periode, detail laporan, CSV serta penerimaan UI finansial lengkap tetap Hari 22. UI login/sesi/staf diverifikasi pada Hari 19 dan pembuatan order pada Hari 20; antrean/progres/receipt tersedia pada Hari 21. Verifikasi browser mock belum menutup AC15 atau kesiapan produksi seluruh aplikasi.
 
 ## Autentikasi dan pengelolaan akun — tindakan — hasil
 
@@ -151,6 +153,33 @@ Kasir yang membuka URL tersebut mendapat petunjuk menuju alur operasional tanpa 
 - Browser/aksesibilitas — pencarian customer tanpa kontak/markup aman, katalog kosong/gagal/retry, hapus baris, fokus hasil/kolom validasi, Enter/Tab dan viewport 1280/768/360/390/412px tanpa overflow diperiksa. Struk dibuka dengan API mock; tidak ada exception JavaScript atau console.error. Expiry pada submit mengarahkan ke login tanpa loop/dialog draft.
 - Backend tetap — tidak menambah handler/use-case test atau menjalankan full suite karena Go/API/domain/transaction tidak berubah. Browser mock membuktikan perilaku klien, bukan konkurensi PostgreSQL atau cetak printer/Android fisik. Bukti dan batas ada pada [laporan Hari 20](progress/day-20.md).
 
+## Antrean, detail dan transaksi Hari 21 — tindakan — hasil
+
+| Tindakan | Hasil |
+|---|---|
+| Search/filter | `/index.html` memakai GET `/api/pesanan?search=...&status=...&limit=20&offset=0`. Search adalah substring literal ID/nama snapshot, tanpa peka kapital, trim dan maksimal 100 karakter; `%`/`_` bukan wildcard, nomor tidak dinormalisasi menjadi kontak. Search/status diproses bersama sebelum pagination di PostgreSQL. Filter kosong dihilangkan dari query; lima status operasional dipisahkan dari status pembayaran |
+| Pagination | Terapkan filter/Enter kembali ke halaman 1; sebelumnya/berikutnya memakai 20 hasil dan urutan created_at/ID menurun. Tidak ada total palsu atau filter lokal pada satu halaman. Halaman penuh terakhir dapat memiliki halaman berikutnya kosong; tombol sebelumnya tetap tersedia. Offset bukan snapshot lintas halaman: writer lain dapat menggeser hasil, sehingga gunakan muat ulang untuk kondisi terbaru |
+| Indikator terlambat | Estimasi telah lewat dan status masih received/processing diberi teks merah. Ready/collected/cancelled tidak dihitung terlambat. Waktu ditampilkan WITA; indikator mengikuti jam perangkat saat pemuatan, tanpa polling |
+| Detail | Nama, rincian kg/item dan harga snapshot, subtotal/diskon/total, dibayar bersih/sisa tagihan, versi, estimasi, milestone tersedia serta catatan/alasan batal dirender melalui createElement/textContent. Saldo berasal dari snapshot server; tidak dihitung dari satu halaman history payment. Riwayat pembayaran dapat dimuat berikutnya per 20 |
+| Status/izin | Received → processing → ready → collected; pengambilan hanya saat saldo nol. Owner/admin dapat membatalkan received/processing tanpa saldo pembayaran dengan alasan wajib. Payment tersedia pada order terbuka dengan saldo positif. Owner/admin mendapat refund penuh per receipt posted, dengan metode asal dan alasan wajib; cashier tidak mendapat kontrol, dan submit paksa tetap diperiksa. Server tetap memeriksa role aktif, saldo/status dan transaksi di bawah lock |
+| Conflict | Status/cancel mengirim expected version. Penolakan 409 menonaktifkan tindakan dan menjelaskan perlunya Muat ulang detail. Refresh mengambil snapshot baru dan mengosongkan input/alasan/pilihan refund; staf meninjau tindakan lagi sebelum key/versi baru dibuat. Tidak ada auto-resubmit dengan versi terbaru. Setelah sukses, aksi juga dikunci sampai refresh eksplisit; kartu antrean diberi pemberitahuan untuk muat ulang |
+| Payment/refund | Amount rupiah integer positif, maksimal sisa tagihan; metode cash/bank_transfer/qris. Tunai memerlukan shift aktif pencatat. Satu intent membuat satu key acak kriptografis dan body JSON tetap sebelum kiriman. Submit ganda, penggantian order, refresh dan navigasi/keluar tab yang sama dikunci saat pending. Hasil menampilkan ID receipt, nominal dan apakah replay idempotent ditemukan tanpa posting ulang |
+| Hasil tidak pasti | Network/timeout 20 detik/408/5xx/JSON atau respons sukses tidak valid menahan intent. Tombol Periksa / kirim ulang memakai path, actor, key dan byte body sama. Penolakan setelah hasil tidak pasti tetap mengunci intent karena tidak membuktikan percobaan sebelumnya batal. Tidak ada retry/antrean otomatis saat koneksi kembali. Sebelum kiriman pertama, offline tidak membuat transaksi |
+| Sesi/draft | Cookie/CSRF memakai modul sesi existing; expiry 401 tetap menuju login tanpa perangkap beforeunload. Key/body hanya di memori tab; reload/penutupan paksa/expiry dapat menghilangkannya. Periksa riwayat order dan transaksi sebelum memasukkan ulang. Tidak ada penyimpanan PII/token ke storage browser |
+| Privasi/receipt | `/api/pesanan/{id}/struk?paper=58` atau `80`, default 58, tetap memerlukan sesi dan izin read_orders aktif; GET/HEAD anonim ditolak dan role asing 403. HTML memakai html/template, mencakup rincian/saldo/status/WITA/catatan, tanpa token tracking. Tracking publik existing tetap `/tracking.html#TOKEN` — `/api/tracking/TOKEN`, projection minimal; ID order tidak menjadi kredensial publik |
+| Cetak thermal | `receipt.css` memakai lebar fisik 58/80 mm, inset 4/5 mm, monospace hitam 12/13px, wrapping nama/ID/catatan panjang dan item tidak dipotong bila muat satu halaman. Tombol/navigasi disembunyikan pada print. Pilih kertas driver yang sama, skala 100% dan matikan header/footer browser; margin halaman CSS nol, inset menjaga area cetak. Pemilihan ukuran tidak mencetak otomatis; tombol cetak memakai script lokal |
+| Batas konsistensi | Detail dan history payment adalah GET terpisah, sehingga transaksi lain tetap dapat terjadi sesudah pembacaan. Server memutuskan payment/refund tanpa expected version di bawah lock; status/cancel memakai version. UI tidak mengklaim snapshot seluruh tab atomik. Angka di luar integer aman JavaScript ditolak sebelum kontrol diaktifkan; Go/receipt tetap memakai int64 |
+
+## Verifikasi Hari 21 — tindakan — hasil
+
+- `node --test --test-name-pattern=queue scripts/frontend-contract.test.cjs` — tiga test lulus untuk graph tindakan/izin, batas pembayaran, overdue dan snapshot invalid; test frontend lain tidak dijalankan.
+- `go test ./internal/http/handler ./internal/http -run 'TestQueue|TestCustomerHTTPMinimumDataSearchAndHistory|TestServiceFailuresAreRedactedAndReceiptIsEscaped|TestListRejectsAmbiguousOrUnboundedQueries|TestCustomerAndReceiptAuthorization|TestTrackingPublicPrivacyAndInvalidTokens|TestPaymentHTTPIdempotencyContract|TestOrderCommandHTTPKeys' -count=1 -timeout=60s` — lulus; search/query invalid, saldo detail, thermal 58/80, escaping pelanggan/layanan/catatan, no-store, otorisasi receipt dan token publik. Test receipt dapat mengekspor HTML sintetis untuk review bila `ULAUNDRY_RECEIPT_PREVIEW_DIR` menunjuk direktori cache yang sudah ada.
+- `go test ./internal/service -run '^TestPostgres(QueueSearch|OrderConcurrency|FinancePaymentsAndRefunds)$' -count=1 -timeout=120s -v` dengan `ULAUNDRY_TEST_ADMIN_DSN` khusus cluster test — tiga suite lulus (17 subtest workflow/finance). Helper membuat/menghapus DB disposable. Search gabungan status/pagination, stale version, duplicate/replay, payment versus cancel/pickup, refund, constraint dan rollback ledger/audit diperiksa; tanpa database operasional atau `.env`.
+- Edge headless dengan API mock sintetis dan modul sesi/UI nyata — search/filter lima status, pagination/halaman kosong, overdue, detail markup aman, 409 dan refresh, double-submit, payment lost-response/timeout lalu replay byte-identik, 403 sesudah hasil tidak pasti, refund permission/replay, cancel dan pelunasan sebelum pickup lulus. Offline tidak mengantre/mengirim otomatis, gagal muat/retry dan 401 tanpa dialog terjebak diperiksa.
+- Browser/print — keyboard Enter/fokus detail dan viewport 1280/768/360/390/412px tanpa overflow lulus; screenshot antrean/detail desktop/ponsel ditinjau. HTML struk asli dari handler test dirender dengan CSS/script nyata; preview print dan PDF 58/80 mm, termasuk nama tanpa spasi dan catatan panjang, diperiksa. Kontrol cetak tersembunyi, markup tetap teks, nominal/WITA terbaca; tidak ada exception JavaScript atau console.error.
+- Syntax/aset/build — sepuluh HTML dan lima belas JavaScript, UTF-8, aset lokal, ID unik, tokens CSS dan header tabel valid; build `cmd/server` berhasil. Diff/status Git ditinjau dan diff whitespace bersih. Tidak menjalankan full backend/frontend suite, race atau migrasi ulang karena transaction/domain command/schema tidak berubah.
+- Batas bukti — browser memakai API mock, PostgreSQL diuji terpisah; belum acceptance browser → server → database nyata, Android/printer fisik atau driver printer produksi. Artefak review sintetis/harness di cache luar repository; lihat [laporan Hari 21](progress/day-21.md). Ini bukan rilis produksi.
+
 ## Verifikasi visual terarah
 
 Periksa halaman pada desktop 1280px, tablet 768px dan viewport Android 360/390/412px. Gunakan data sintetis/lingkungan development; jangan memasukkan PII produksi dalam screenshot. Fondasi sembilan halaman diperiksa Hari 18; halaman POS ditambahkan Hari 20.
@@ -162,4 +191,4 @@ Periksa halaman pada desktop 1280px, tablet 768px dan viewport Android 360/390/4
 - Print media kas/shift menyembunyikan shell/kontrol; reduced-motion mematikan animasi spinner CSS.
 - Console/JavaScript dan resource error pada alur normal; respons API gagal yang sengaja disimulasikan dibedakan dari exception UI.
 
-Perintah frontend resmi tetap `node --test scripts/frontend-contract.test.cjs`; Hari 18 menjalankan 14 test, Hari 19 menjadi 22 dan Hari 20 menjadi 29. Syntax dapat diperiksa dengan `node --check` pada file JS yang berubah. Bukti visual memakai Edge headless dan API mock lokal, tanpa PostgreSQL atau automated test backend. Android fisik, printer fisik dan acceptance database end-to-end bukan bukti tugas ini. Bukti fondasi ada pada [laporan Hari 18](progress/day-18.md), auth/staf pada [Hari 19](progress/day-19.md), POS pada [Hari 20](progress/day-20.md).
+Perintah frontend resmi tetap `node --test scripts/frontend-contract.test.cjs`; Hari 18 menjalankan 14 test, Hari 19 menjadi 22 dan Hari 20 menjadi 29; Hari 21 mengganti satu test antrean lama dengan tiga test model (31 tersedia, hanya tiga test antrean dijalankan pada tugas ini). Syntax dapat diperiksa dengan `node --check` pada file JS yang berubah. Bukti browser memakai Edge headless/API mock; Hari 21 menjalankan HTTP dan PostgreSQL terarah secara terpisah. Android fisik, printer fisik dan acceptance database end-to-end bukan bukti tugas ini. Bukti fondasi ada pada [laporan Hari 18](progress/day-18.md), auth/staf pada [Hari 19](progress/day-19.md), POS pada [Hari 20](progress/day-20.md) dan antrean/transaksi/receipt pada [Hari 21](progress/day-21.md).

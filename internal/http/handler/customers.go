@@ -96,7 +96,7 @@ func (h *Handler) CustomerOrders(w http.ResponseWriter, r *http.Request) {
 	// Reuse internal order summaries; never include tokens, ledger or customer notes.
 	result := make([]dto.OrderResponse, 0, len(items))
 	for _, item := range items {
-		result = append(result, dto.OrderResponse{ID: item.ID, Customer: item.CustomerName, Services: strings.Join(item.ServiceNames, ", "), Total: int64(item.Total), Status: string(item.Status), PaymentStatus: string(item.PaymentStatus), Version: item.Version, CreatedAt: item.CreatedAt, EstimatedReadyAt: item.EstimatedReadyAt})
+		result = append(result, dto.OrderResponse{Paid: int64(item.Paid), Balance: int64(item.Total - item.Paid), ID: item.ID, Customer: item.CustomerName, Services: strings.Join(item.ServiceNames, ", "), Total: int64(item.Total), Status: string(item.Status), PaymentStatus: string(item.PaymentStatus), Version: item.Version, CreatedAt: item.CreatedAt, EstimatedReadyAt: item.EstimatedReadyAt})
 	}
 	response.JSON(w, r, 200, result)
 }

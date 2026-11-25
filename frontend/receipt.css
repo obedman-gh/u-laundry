@@ -1,0 +1,19 @@
+* { box-sizing: border-box; }
+body { --paper:58mm; --inset:4mm; margin:0 auto; width:var(--paper); max-width:100%; color:#000; background:#fff; font:12px/1.45 monospace; overflow-wrap:anywhere; }
+body.paper-80 { --paper:80mm; --inset:5mm; font-size:13px; }
+main { padding:var(--inset); }
+h1 { font-size:20px; margin:0; }
+header, footer { text-align:center; }
+p { margin:4px 0; }
+dl { margin:10px 0; }
+dt { font-weight:bold; }
+dd { margin:0 0 5px; }
+.item, .totals { border-top:1px dashed #000; padding-top:7px; margin-top:7px; }
+.item { break-inside:avoid; }
+.amount, .totals dd { text-align:right; }
+.notes { white-space:pre-wrap; }
+.print-controls { padding:10px; border-bottom:1px solid #000; font:14px/1.5 sans-serif; }
+.print-controls a, button { display:inline-block; margin:3px; padding:10px; color:#000; background:#fff; border:1px solid #000; font:inherit; }
+:focus-visible { outline:3px solid #000; outline-offset:2px; }
+@page { size:auto; margin:0; }
+@media print { .print-controls { display:none; } main { padding-top:2mm; padding-bottom:2mm; } }

@@ -58,23 +58,33 @@ test('network failure restores form without storing credentials', async () => {
 });
 
 
-test('cashier queue uses shared session transport and safe DOM rendering', async () => {
- const elements = new Map();
- const make = () => ({style:{},disabled:true,textContent:'',children:[],setAttribute(name,value){this[name]=value;},appendChild(child){this.children.push(child);},replaceChildren(){this.children=[];},addEventListener(type,fn){this[type]=fn;}});
- const element = id => {if(!elements.has(id)) elements.set(id,make());return elements.get(id);};
- const calls=[];const stored=new Map([['token','legacy-token']]);const window={location:{href:''}};
- const source=fs.readFileSync(path.join(__dirname,'../frontend/queue.js'),'utf8');
- const context=vm.createContext({document:{getElementById:element,createElement:make},window,localStorage:{removeItem(k){stored.delete(k);}},fetch:async(url,options)=>{
-  calls.push({url,options});assert.equal(options.credentials,'same-origin');assert.equal(options.headers?.Authorization,undefined);
-  const body=url==='/api/session'?{csrf_token:'csrf-synthetic'}:url==='/api/pesanan'?[{nama_customer:'<script>synthetic</script>',id_pesanan:'order-1',layanan:'Cuci',total_biaya:1000,status:'received'}]:{pesan:'Sesi telah diakhiri.'};
-  return {ok:true,status:200,json:async()=>body};
- }});
- sessionBridge(context);
- vm.runInContext(source,context);await new Promise(resolve=>setImmediate(resolve));
- assert.equal(element('tempat-pesanan').children[0].children[0].textContent,'<script>synthetic</script> (order-1)');
- assert.equal(calls.length,2);assert.equal(calls[0].url,'/api/session');assert.equal(calls[1].url,'/api/pesanan');
+function queueModel() {
+ const context=vm.createContext({window:{}});
+ vm.runInContext(fs.readFileSync(path.join(__dirname,'../frontend/queue-model.js'),'utf8'),context);
+ return context.window.ULaundryQueue;
+}
+test('queue actions follow workflow, balance and refund permissions',()=>{
+ const m=queueModel(),o={status:'received',paid:0,balance:100};
+ assert.equal(m.actions(o,'cashier').next,'processing');
+ assert.equal(m.actions(o,'cashier').cancel,false);assert.equal(m.actions(o,'cashier').refund,false);
+ assert.equal(m.actions(o,'admin').cancel,true);assert.equal(m.actions(o,'owner').refund,true);
+ assert.equal(m.actions({...o,paid:10},'owner').cancel,false);
+ assert.equal(m.actions({...o,status:'ready'},'cashier').next,'');
+ assert.equal(m.actions({...o,status:'ready',balance:0},'cashier').next,'collected');
+ for(const status of ['collected','cancelled']){const a=m.actions({...o,status},'owner');assert.equal(a.next,'');assert.equal(a.payment,false);assert.equal(a.refund,false);assert.equal(a.cancel,false);}
 });
-
+test('queue overdue excludes ready and terminal orders; amount rejects precision loss',()=>{
+ const m=queueModel(),now=Date.parse('2026-11-26T00:00:00Z'),o={status:'processing',waktu_perkiraan_selesai:'2026-11-25T00:00:00Z'};
+ assert.equal(m.overdue(o,now),true);for(const status of ['ready','collected','cancelled'])assert.equal(m.overdue({...o,status},now),false);
+ assert.equal(m.overdue({...o,waktu_perkiraan_selesai:'2026-11-27T00:00:00Z'},now),false);
+ assert.equal(m.amount('10000',10000),10000);
+ for(const raw of ['0','-1','1.5','1e3','1,000','9007199254740993','10001'])assert.throws(()=>m.amount(raw,10000));
+});
+test('queue validates server money/version snapshots before enabling actions',()=>{
+ const m=queueModel(),o={id_pesanan:'order-1',nama_customer:'<script>literal</script>',status:'received',payment_status:'unpaid',version:1,total_biaya:100,paid:0,balance:100,waktu_perkiraan_selesai:'2026-11-27T00:00:00Z'};
+ assert.equal(m.validate(o),o);
+ for(const change of [{version:0},{status:'Sudah Lunas'},{balance:99},{paid:9007199254740992},{id_pesanan:'../private'}])assert.throws(()=>m.validate({...o,...change}));
+});
 
 async function staffPage(role = 'owner', conflict = false) {
  const elements=new Map(),calls=[];

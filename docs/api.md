@@ -1,4 +1,4 @@
-# Kontrak HTTP API — hari 17
+# Kontrak HTTP API — hari 21
 
 Server memakai storage domain hingga migration 000012 dan autentikasi existing. Ini perubahan kontrak dari handler legacy: tidak menerima total/harga/status klien saat create order; data/akun pesanan-kasir-keuangan lama belum diimpor. Jangan aktifkan pada data operasional sebelum mapping, backup/restore dan rekonsiliasi; lihat [architecture.md](architecture.md).
 
@@ -22,10 +22,10 @@ Semua body JSON memakai satu Content-Type application/json (charset UTF-8 opsion
 | POST /api/services | Owner/admin; name/unit/unit_price/turnaround_minutes/active/display_order → konfigurasi/service_id/version |
 | PUT /api/services/{id} | Owner/admin; field konfigurasi + expected `version`; snapshot order lama tetap |
 | POST /api/pesanan | customer_id/items/discount/notes/estimasi + Idempotency-Key wajib → order, tracking_token sekali, tracking_expires_at; retry identik 200 |
-| GET /api/pesanan | Staf; limit/offset/status/customer_id, array ringkasan kompatibel field daftar lama |
+| GET /api/pesanan | Staf; limit/offset/status/customer_id/search, array ringkasan dengan paid/balance integer |
 | GET /api/pesanan/status?q=processing | Alias deprecated; q wajib status domain, pagination sama; penerus GET /api/pesanan?status=processing |
-| GET /api/pesanan/{id} | Staf; satu objek detail termasuk version; **tidak publik lagi** |
-| GET /api/pesanan/{id}/struk | Staf; HTML escaped untuk print; **tidak publik lagi** |
+| GET /api/pesanan/{id} | Staf; satu objek detail termasuk version, paid/balance, notes/cancellation_reason; **tidak publik lagi** |
+| GET /api/pesanan/{id}/struk | Staf; HTML escaped thermal, query paper=58/80 (default 58); **tidak publik lagi** |
 | GET /api/pesanan/{id}/history | Staf; riwayat status privat, limit/offset, version menurun |
 | PUT /api/pesanan/{id} | Staf; status dan expected version + Idempotency-Key wajib; bukan mencatat pembayaran |
 | POST /api/pesanan/{id}/cancel | Owner/admin; version/reason + Idempotency-Key wajib; saldo payment net harus nol |
@@ -243,3 +243,11 @@ Bootstrap, command test dan batas deployment dijelaskan di README bagian Akun aw
 
 - UI — /customers.html menyediakan create/edit/search/history, struk internal dan tautan tracking baru; /tracking.html#TOKEN menampilkan projection publik dan membersihkan fragment. Struk publik tidak ditambahkan. Semua respons data no-store; token tidak disimpan di browser storage. Kebijakan expiry/rotation, batas log proxy dan rollback migration ada di [privacy.md](privacy.md).
 - Verifikasi terarah — command/bukti di [laporan hari 11](progress/day-11.md); tidak membutuhkan full suite. Penambahan migration 000007 membutuhkan deployment binary yang memasok expires_at; jangan downgrade ke penulis schema 6.
+
+## Antrean/receipt — Hari 21
+
+`GET /api/pesanan?search=Antrean&status=processing&limit=20&offset=0` memfilter sebelum pagination. Search mencari substring literal pada ID atau nama snapshot customer (tanpa peka kapital), trim maksimal 100 karakter; `%`/`_` bukan wildcard dan nomor bukan pencarian kontak. Parameter duplikat, kontrol atau query terlalu panjang ditolak. Hilangkan parameter kosong. Urutan created_at lalu ID menurun; tidak ada total/has_more atau snapshot lintas halaman baru. Customer history turut mengembalikan paid/balance yang sesuai.
+
+Ringkasan/detail/create/replay status kini memuat integer `paid` bersih setelah refund dan `balance=total_biaya-paid`. Detail juga memuat notes/cancellation_reason jika tersedia; tidak ada token, kontak atau alamat baru dalam projection. Semua tetap privat/no-store. Query receipt hanya `paper=58` atau `80`; ukuran lain/duplikat/parameter asing ditolak. Rendering memakai html/template dan aset lokal; data pelanggan/layanan/catatan di-escape. Pilih ukuran driver printer yang sama, skala 100%, header/footer browser nonaktif. Print preview/PDF bukan bukti printer fisik.
+
+Tidak ada perubahan endpoint/body/locking/idempotency status/payment/refund. UI memakai PUT `/api/pesanan/{id}`, POST `/cancel`, POST/GET `/pembayaran` dan POST `/refunds`. Conflict memerlukan pembacaan dan peninjauan ulang; kiriman yang hasilnya tidak pasti hanya di-retry dengan key/body semula. Lihat [ui.md](ui.md) untuk batas key dalam memori tab.

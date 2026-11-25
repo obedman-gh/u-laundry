@@ -8,6 +8,15 @@ import (
 
 type OrderStatus string
 
+// OrderSearch searches the immutable customer name or order ID literally.
+func OrderSearch(term string) (string, error) {
+	term = strings.TrimSpace(term)
+	if err := text("search", term, 100, false, false); err != nil {
+		return "", err
+	}
+	return term, nil
+}
+
 const (
 	Received   OrderStatus = "received"
 	Processing OrderStatus = "processing"

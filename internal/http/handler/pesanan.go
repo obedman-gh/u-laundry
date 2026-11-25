@@ -2,7 +2,6 @@ package handler
 
 import (
 	"bytes"
-	"html/template"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -26,7 +25,7 @@ func orderView(record repository.OrderRecord) dto.OrderResponse {
 		items = append(items, dto.OrderItemResponse{ServiceID: item.ServiceID, Name: item.ServiceName, Unit: dto.PublicUnit(string(item.Unit)), UnitPrice: int64(item.UnitPrice), Pieces: item.Quantity.Pieces, Grams: item.Quantity.Grams, LineTotal: int64(item.LineTotal)})
 	}
 	subtotal, discount := int64(o.Subtotal()), int64(o.Discount().Amount)
-	return dto.OrderResponse{ID: o.ID(), Customer: o.Customer().Name, Services: strings.Join(names, ", "), Total: int64(o.Total()), Status: string(o.Status()), PaymentStatus: string(o.PaymentStatus()), Version: record.Version, CreatedAt: o.CreatedAt(), EstimatedReadyAt: o.EstimatedReadyAt(), ReadyAt: nullableTime(o.ReadyAt()), ProcessingAt: nullableTime(o.ProcessingAt()), CollectedAt: nullableTime(o.CollectedAt()), CancelledAt: nullableTime(o.CancelledAt()), Replayed: record.Replayed, AppliedVersion: record.AppliedVersion, Items: items, Subtotal: &subtotal, Discount: &discount}
+	return dto.OrderResponse{Paid: int64(o.Paid()), Balance: int64(o.Balance()), Notes: o.Notes(), CancellationReason: o.CancellationReason(), ID: o.ID(), Customer: o.Customer().Name, Services: strings.Join(names, ", "), Total: int64(o.Total()), Status: string(o.Status()), PaymentStatus: string(o.PaymentStatus()), Version: record.Version, CreatedAt: o.CreatedAt(), EstimatedReadyAt: o.EstimatedReadyAt(), ReadyAt: nullableTime(o.ReadyAt()), ProcessingAt: nullableTime(o.ProcessingAt()), CollectedAt: nullableTime(o.CollectedAt()), CancelledAt: nullableTime(o.CancelledAt()), Replayed: record.Replayed, AppliedVersion: record.AppliedVersion, Items: items, Subtotal: &subtotal, Discount: &discount}
 }
 func (h *Handler) GetSemuaPesanan(w http.ResponseWriter, r *http.Request) { h.list(w, r, false) }
 func (h *Handler) GetPesananByStatus(w http.ResponseWriter, r *http.Request) {
@@ -39,7 +38,7 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, legacy bool) {
 	if legacy {
 		statusKey = "q"
 	}
-	values, err := query(r, "limit", "offset", statusKey, "customer_id")
+	values, err := query(r, "limit", "offset", statusKey, "customer_id", "search")
 	if err != nil {
 		writeError(w, r, err)
 		return
@@ -55,18 +54,23 @@ func (h *Handler) list(w http.ResponseWriter, r *http.Request, legacy bool) {
 		return
 	}
 	customerID := values.Get("customer_id")
+	search, err := domain.OrderSearch(values.Get("search"))
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
 	if customerID != "" && !dto.Identifier(customerID) {
 		writeError(w, r, &dto.ValidationError{Message: "Identitas pelanggan tidak valid."})
 		return
 	}
-	items, err := h.use.Orders.List(r.Context(), middleware.ActorID(r.Context()), repository.OrderFilter{Page: p, Status: domain.OrderStatus(status), CustomerID: customerID})
+	items, err := h.use.Orders.List(r.Context(), middleware.ActorID(r.Context()), repository.OrderFilter{Page: p, Status: domain.OrderStatus(status), CustomerID: customerID, Search: search})
 	if err != nil {
 		writeError(w, r, err)
 		return
 	}
 	result := make([]dto.OrderResponse, 0, len(items))
 	for _, item := range items {
-		result = append(result, dto.OrderResponse{ID: item.ID, Customer: item.CustomerName, Services: strings.Join(item.ServiceNames, ", "), Total: int64(item.Total), Status: string(item.Status), PaymentStatus: string(item.PaymentStatus), Version: item.Version, CreatedAt: item.CreatedAt, EstimatedReadyAt: item.EstimatedReadyAt})
+		result = append(result, dto.OrderResponse{Paid: int64(item.Paid), Balance: int64(item.Total - item.Paid), ID: item.ID, Customer: item.CustomerName, Services: strings.Join(item.ServiceNames, ", "), Total: int64(item.Total), Status: string(item.Status), PaymentStatus: string(item.PaymentStatus), Version: item.Version, CreatedAt: item.CreatedAt, EstimatedReadyAt: item.EstimatedReadyAt})
 	}
 	response.JSON(w, r, http.StatusOK, result)
 }
@@ -222,9 +226,20 @@ func (h *Handler) Tracking(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, r, http.StatusOK, dto.TrackingResponse{Code: view.Code, Status: string(view.Status), EstimatedReadyAt: view.EstimatedReadyAt, Message: view.Message})
 }
 
-var receipt = template.Must(template.New("receipt").Parse(`<!DOCTYPE html><html lang="id"><head><title>Struk {{.ID}}</title><style>body{font-family:monospace;width:300px;margin:0 auto;padding:10px;color:#000}.center{text-align:center}.line{border-bottom:1px dashed #000;margin:10px 0}@media print{body{width:100%;margin:0}}</style></head><body><div class="center"><h2>ULAUNDRY</h2><p>Perumahan Viola</p></div><div class="line"></div><p>ID Order: {{.ID}}<br>Nama: {{.Customer}}<br>Layanan: {{.Services}}<br>Mulai: {{.CreatedAt.Format "2006-01-02 15:04:05 -07:00"}}</p><h3>TOTAL: Rp {{.Total}}</h3><p>Status: {{.Status}}<br>Pembayaran: {{.PaymentStatus}}</p><button onclick="window.print()">Cetak struk</button></body></html>`))
-
 func (h *Handler) CetakStruk(w http.ResponseWriter, r *http.Request) {
+	values, err := query(r, "paper")
+	if err != nil {
+		writeError(w, r, err)
+		return
+	}
+	paper := values.Get("paper")
+	if paper == "" {
+		paper = "58"
+	}
+	if paper != "58" && paper != "80" {
+		writeError(w, r, &dto.ValidationError{Message: "Lebar kertas harus 58 atau 80 mm."})
+		return
+	}
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	id, ok := pathID(w, r)
 	if !ok {
@@ -236,7 +251,7 @@ func (h *Handler) CetakStruk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body bytes.Buffer
-	if err := receipt.Execute(&body, orderView(item)); err != nil {
+	if err := receipt.Execute(&body, receiptData{OrderResponse: orderView(item), Paper: paper}); err != nil {
 		writeError(w, r, err)
 		return
 	}
