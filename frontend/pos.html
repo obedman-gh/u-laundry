@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pesanan baru — ULaundry</title>
+  <link rel="stylesheet" href="/ui/tokens.css"><link rel="stylesheet" href="/ui/ui.css"><link rel="stylesheet" href="/pos.css">
+  <link rel="icon" href="/ui/favicon.svg" type="image/svg+xml">
+  <script src="/ui/ui.js" defer></script><script src="/ui/session.js" defer></script><script src="/pos-model.js" defer></script><script src="/pos.js" defer></script>
+</head>
+<body data-staff-app data-page="pos"><main>
+  <div class="page-heading"><div><h1>Pesanan baru</h1><p class="muted">Pilih pelanggan, isi layanan, lalu simpan pesanan.</p></div><a href="/index.html">Lihat antrean</a></div>
+  <div id="pos-state" aria-live="polite"></div>
+  <div id="pos-workspace" hidden>
+    <section class="card" aria-labelledby="customer-title" id="pos-customer">
+      <h2 id="customer-title">1. Pelanggan</h2>
+      <p id="selected-customer" class="ui-alert" role="status">Belum ada pelanggan terpilih.</p>
+      <form id="customer-search" class="search-row" role="search" aria-label="Cari pelanggan">
+        <div><label for="customer-query">Nama atau nomor kontak</label><input id="customer-query" type="search" maxlength="100" autocomplete="off"></div>
+        <button type="submit" id="search-customer">Cari pelanggan</button>
+      </form>
+      <p id="customer-message" class="ui-alert" role="status"></p>
+      <ul id="customer-results" class="data-list" aria-label="Hasil pencarian pelanggan"></ul>
+      <div class="pager"><button type="button" id="customer-previous" class="secondary" disabled>Sebelumnya</button><span id="customer-page"></span><button type="button" id="customer-next" class="secondary" disabled>Berikutnya</button></div>
+      <details id="new-customer">
+        <summary>Tambah pelanggan baru</summary>
+        <form id="customer-create" novalidate>
+          <div class="fields">
+            <div><label for="customer-name">Nama pelanggan</label><input id="customer-name" required maxlength="100" autocomplete="name" aria-describedby="customer-name-error"><small id="customer-name-error" class="field-error" hidden></small></div>
+            <div><label for="customer-contact">Nomor kontak (opsional)</label><input id="customer-contact" type="tel" maxlength="64" autocomplete="tel" aria-describedby="customer-contact-error"><small id="customer-contact-error" class="field-error" hidden></small></div>
+          </div>
+          <p class="muted">Cukup nama untuk pelanggan datang langsung. Cari terlebih dahulu agar tidak membuat pelanggan ganda.</p>
+          <button id="create-customer" type="submit">Simpan dan pilih pelanggan</button>
+        </form>
+      </details>
+    </section>
+    <form id="pos-form" novalidate>
+      <div class="pos-grid">
+        <div>
+          <section class="card" aria-labelledby="items-title">
+            <div class="toolbar"><h2 id="items-title">2. Layanan</h2><button id="catalog-reload" type="button" class="secondary">Muat ulang harga</button></div>
+            <p id="catalog-message" class="ui-alert" role="status"></p>
+            <button id="catalog-more" type="button" class="secondary" hidden>Layanan berikutnya</button>
+            <div id="pos-items"></div>
+            <button id="add-item" type="button" class="secondary">Tambah baris layanan</button>
+          </section>
+          <section class="card" aria-labelledby="details-title">
+            <h2 id="details-title">3. Rincian pesanan</h2>
+            <fieldset id="discount-fields" hidden disabled>
+              <legend>Diskon pemilik/admin</legend>
+              <label for="pos-discount">Diskon nominal (Rp)</label><input id="pos-discount" inputmode="numeric" value="0" aria-describedby="pos-discount-error"><small id="pos-discount-error" class="field-error" hidden></small>
+              <label for="discount-reason">Alasan diskon</label><input id="discount-reason" maxlength="250" aria-describedby="discount-reason-error"><small id="discount-reason-error" class="field-error" hidden></small>
+            </fieldset>
+            <label for="ready-at">Estimasi selesai (opsional, WITA / UTC+08)</label><input id="ready-at" type="datetime-local" step="60" aria-describedby="ready-help ready-at-error"><small id="ready-help">Kosongkan untuk durasi layanan terlama. Waktu final ditentukan server saat pesanan diterima.</small><small id="ready-at-error" class="field-error" hidden></small>
+            <label for="pos-notes">Catatan pesanan (opsional)</label><textarea id="pos-notes" maxlength="1000" rows="3" aria-describedby="pos-notes-error"></textarea><small id="pos-notes-error" class="field-error" hidden></small>
+          </section>
+        </div>
+        <section class="card pos-summary" aria-labelledby="summary-title">
+          <h2 id="summary-title">4. Periksa dan simpan</h2>
+          <dl class="pos-totals"><dt>Perkiraan subtotal</dt><dd id="preview-subtotal">—</dd><dt>Diskon</dt><dd id="preview-discount">Rp 0</dd><dt>Perkiraan total</dt><dd id="preview-total" class="pos-total" aria-live="polite">—</dd><dt>Perkiraan selesai</dt><dd id="preview-ready">—</dd></dl>
+          <p class="muted">Harga di atas adalah perkiraan katalog. Server memeriksa layanan, menghitung total final dan menyimpan pesanan. Pembayaran dicatat terpisah.</p>
+          <p id="pos-message" class="ui-alert" role="status"></p>
+          <button id="save-order" type="submit">Simpan pesanan</button>
+          <button id="retry-order" type="button" hidden>Periksa hasil / coba kembali</button>
+          <button id="edit-order" type="button" class="secondary" hidden>Perbaiki pesanan</button>
+          <p id="pending-help" class="muted" hidden>Isian dikunci agar pemeriksaan memakai pesanan yang sama. Jangan muat ulang atau tutup tab sebelum hasil dipastikan. Tidak ada pengiriman otomatis saat koneksi kembali.</p>
+          <a id="inspect-orders" href="/index.html" target="_blank" rel="noopener" hidden>Periksa antrean di tab lain</a>
+        </section>
+      </div>
+    </form>
+  </div>
+  <section id="pos-result" class="card" aria-labelledby="result-title" hidden>
+    <h2 id="result-title" tabindex="-1">Pesanan tersimpan</h2>
+    <p id="result-message" class="ui-alert" role="status"></p>
+    <p id="result-customer"></p><p id="result-id"></p>
+    <ul id="result-items" class="data-list"></ul>
+    <dl class="pos-totals"><dt>Subtotal server</dt><dd id="result-subtotal"></dd><dt>Diskon server</dt><dd id="result-discount"></dd><dt>Total final server</dt><dd id="result-total" class="pos-total"></dd><dt>Estimasi selesai</dt><dd id="result-ready"></dd><dt>Status</dt><dd id="result-status"></dd></dl>
+    <div class="toolbar result-actions"><a id="receipt-link" class="button" target="_blank" rel="noopener">Buka / cetak struk</a><a id="tracking-link" target="_blank" rel="noopener" hidden>Buka tracking pelanggan</a><button id="new-order" type="button" class="secondary">Pesanan berikutnya</button><a href="/index.html">Lihat antrean</a></div>
+    <p id="tracking-message" class="muted"></p>
+  </section>
+  <noscript><p class="ui-alert">Aktifkan JavaScript untuk membuat pesanan.</p></noscript>
+</main></body></html>

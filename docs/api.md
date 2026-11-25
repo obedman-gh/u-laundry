@@ -91,7 +91,7 @@ Daily hanya menerima date (field/query filter actor dari klien ditolak); respons
 
 Error: field/nominal/date/key invalid 400, tanpa sesi 401, shift asing 403, tidak ditemukan 404, duplicate active/payload conflict/shift tertutup/uang kas tidak cukup 409. Mutasi memakai audit/transaksi atomic dan query parameter; seluruh respons no-store. Aturan serta batas operasional ada di [finance.md](finance.md).
 
-Pagination limit default 20/maksimum 100, offset minimal 0. Detail sekarang satu objek, bukan array satu elemen. Ringkasan tetap id_pesanan/nama_customer/layanan/total_biaya/status untuk halaman daftar yang ada, ditambah payment_status/version. Nilai status sekarang kode domain; update frontend lengkap/diskon/POS belum dibuat. Konsumen JavaScript harus memperhatikan batas integer aman saat menangani nominal BIGINT besar; seluruh kalkulasi server tetap int64.
+Pagination limit default 20/maksimum 100, offset minimal 0. Detail sekarang satu objek, bukan array satu elemen. Ringkasan tetap id_pesanan/nama_customer/layanan/total_biaya/status untuk halaman daftar yang ada, ditambah payment_status/version. Nilai status memakai kode domain. UI POS `/pos.html` Hari 20 memakai API existing untuk create dan replay, dengan harga sebelum submit sebagai perkiraan katalog dan hasil final dari snapshot server; tidak menambah endpoint quote atau mengirim harga/total klien. Konsumen JavaScript harus memperhatikan batas integer aman saat menangani nominal BIGINT besar; seluruh kalkulasi server tetap int64.
 
 ## Layanan dan harga hari 12 — Tindakan — Hasil
 

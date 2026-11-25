@@ -1,0 +1,35 @@
+/* POS uses the existing ULaundry palette and shared controls. */
+.pos-grid { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(16rem, 1fr); gap: var(--space-6); align-items: start; }
+.pos-grid > div, .pos-grid section { min-width: 0; }
+.pos-grid > div > .card:first-child { margin-top: 0; }
+.pos-summary { position: sticky; top: var(--space-5); margin-top: 0; }
+.pos-summary > button { width: 100%; margin-inline: 0; }
+.search-row, .pos-line-fields { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-3); align-items: end; }
+.search-row label { margin-top: 0; }
+.search-row button { margin: 0; }
+#pos-items fieldset { min-width: 0; margin: var(--space-5) 0; padding: var(--space-4); border: 1px solid var(--color-border); border-radius: var(--radius-small); }
+#pos-items legend { padding-inline: var(--space-2); font-weight: 600; }
+.pos-line-fields { grid-template-columns: minmax(0, 1fr) minmax(6rem, .6fr); }
+.pos-line-price { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2); margin-block: var(--space-3); }
+.pos-line-price output { font-weight: 600; }
+.pos-totals { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--space-3); }
+.pos-totals dt, .pos-totals dd { margin: 0; overflow-wrap: anywhere; }
+.pos-totals dd { text-align: right; font-variant-numeric: tabular-nums; }
+.pos-total { color: var(--color-heading); font-size: var(--text-section); font-weight: 700; }
+.field-error { color: var(--color-danger); margin-top: var(--space-2); }
+#pos-workspace select[aria-invalid="true"] { border-color: var(--color-danger); }
+#discount-fields { min-width: 0; border: 1px solid var(--color-border); border-radius: var(--radius-small); padding: var(--space-4); }
+#discount-fields legend { font-weight: 600; }
+#new-customer { margin-top: var(--space-4); }
+#new-customer summary { padding: var(--space-3) 0; min-height: var(--control-height); cursor: pointer; font-weight: 600; color: var(--color-action-hover); }
+#selected-customer { font-weight: 600; }
+.result-actions { justify-content: flex-start; }
+#result-title:focus { outline: 3px solid var(--color-action-hover); outline-offset: 3px; }
+@media (max-width: 1050px) {
+  .pos-grid { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .pos-summary { position: static; }
+}
+@media (max-width: 479px) {
+  .search-row, .pos-line-fields { grid-template-columns: minmax(0, 1fr); }
+  .pos-totals { grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); }
+}

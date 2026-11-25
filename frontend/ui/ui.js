@@ -11,6 +11,7 @@
   const routes = [
     ['dashboard','/dashboard.html','Dashboard',['owner','admin']],
     ['orders','/index.html','Antrean',['owner','admin','cashier']],
+    ['pos','/pos.html','Pesanan baru',['owner','admin','cashier']],
     ['customers','/customers.html','Pelanggan',['owner','admin','cashier']],
     ['shifts','/shifts.html','Kas dan shift',['owner','admin','cashier']],
     ['services','/services.html','Layanan dan harga',['owner','admin']],

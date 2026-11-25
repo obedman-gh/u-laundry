@@ -260,3 +260,56 @@ test('logout failure requires explicit retry and successful logout rejects late 
  mode=200;await page.auth.logout();assert.deepEqual(page.redirects,['/login.html?reason=signed-out']);assert.equal(page.calls.filter(c=>c.url==='/api/logout').length,2);assert.equal(page.calls[1].options.headers['X-CSRF-Token'],'memory-only-csrf');
  let release;const late=sessionModule(()=>new Promise(resolve=>{release=resolve;}));const check=late.auth.get();late.auth.end('signed-out');release(sessionResponse());await assert.rejects(check,/Sesi/);await assert.rejects(late.auth.get(),/Sesi/);assert.equal(late.redirects.length,1);
 });
+
+const posContext=vm.createContext({window:{}});
+vm.runInContext(fs.readFileSync(path.join(__dirname,'../frontend/pos-model.js'),'utf8'),posContext);
+const pos=posContext.window.ULaundryPOSModel;
+const posCatalog=new Map([['wash',{service_id:'wash',unit:'kg',unit_price:7005,turnaround_minutes:1440}],['blanket',{service_id:'blanket',unit:'item',unit_price:20000,turnaround_minutes:2880}]]);
+const posDraft=()=>({customer:{customer_id:'customer-1'},lines:[{key:'1',serviceId:'wash',quantity:'0,100'},{key:'2',serviceId:'blanket',quantity:'2'}],discount:'0',discountReason:'',notes:'Pisahkan warna',readyAt:''});
+
+test('POS converts decimal kg to integer grams without float rounding',()=>{
+ for(const [value,expected] of [['0,001',1],['2.500',2500],['12,345',12345]])assert.equal(pos.quantity('kg',value,'weight').grams,expected);
+ for(const value of ['0','0.0001','1e3','1,000.5','-1','9007199254740.992'])assert.throws(()=>pos.quantity('kg',value,'weight'));
+ for(const value of ['0','1.5','1,5','9007199254740992'])assert.throws(()=>pos.quantity('item',value,'pieces'));
+});
+
+test('POS preview rounds half-up per line and rejects unsafe totals',()=>{
+ const split=pos.calculate([{key:'1',serviceId:'wash',quantity:'0.1'},{key:'2',serviceId:'wash',quantity:'0.1'}],posCatalog);
+ assert.equal(split.subtotal,1402);assert.equal(pos.calculate([{key:'1',serviceId:'wash',quantity:'0.2'}],posCatalog).subtotal,1401);
+ assert.throws(()=>pos.calculate([{key:'1',serviceId:'blanket',quantity:'9007199254740991'}],posCatalog),/melampaui/);
+});
+
+test('POS request contains IDs and integer quantities without client prices or totals',()=>{
+ const built=pos.build(posDraft(),posCatalog,'cashier');
+ assert.equal(built.total,40701);assert.deepEqual(JSON.parse(JSON.stringify(built.payload)),{customer_id:'customer-1',items:[{service_id:'wash',grams:100},{service_id:'blanket',pieces:2}],discount:0,notes:'Pisahkan warna'});
+});
+
+test('POS discount requires current owner/admin role, reason and a bounded integer amount',()=>{
+ const draft=posDraft();draft.discount='1';draft.discountReason='Penyesuaian';
+ assert.throws(()=>pos.build(draft,posCatalog,'cashier'),/pemilik atau admin/);
+ for(const role of ['owner','admin'])assert.equal(pos.build(draft,posCatalog,role).total,40700);
+ draft.discount='40702';assert.throws(()=>pos.build(draft,posCatalog,'owner'),/melebihi/);
+ draft.discount='1.5';assert.throws(()=>pos.build(draft,posCatalog,'owner'),/bilangan bulat/);
+ draft.discount='1';draft.discountReason='';assert.throws(()=>pos.build(draft,posCatalog,'owner'));
+ draft.discount='0';draft.discountReason='Tidak berlaku';assert.throws(()=>pos.build(draft,posCatalog,'owner'),/Kosongkan/);
+});
+
+test('POS estimate explicitly interprets WITA and validates calendar/future time',()=>{
+ const now=Date.parse('2026-11-25T00:00:00Z');assert.equal(pos.estimate('2026-11-26T09:30',now),'2026-11-26T01:30:00.000Z');
+ for(const value of ['2026-11-25T07:59','2026-02-31T12:00','2026-13-01T12:00','not-a-date'])assert.throws(()=>pos.estimate(value,now));
+ assert.equal(pos.estimate('',now),undefined);
+});
+
+test('POS accepts server snapshot totals independently of preview and rejects inconsistent/unsafe data',()=>{
+ const order={id_pesanan:'order-1',nama_customer:'<img src=x>',status:'received',payment_status:'unpaid',waktu_perkiraan_selesai:'2026-11-26T00:00:00Z',subtotal:800,discount:1,total_biaya:799,items:[{service_id:'wash',service_name:'Cuci',unit:'kg',unit_price:8000,grams:100,pieces:0,line_total:800}]};
+ assert.equal(pos.result({order,replayed:false}).total_biaya,799);
+ assert.throws(()=>pos.result({order:{...order,total_biaya:700},replayed:false}),/Total/);
+ assert.throws(()=>pos.result({order:{...order,total_biaya:9007199254740992},replayed:false}));
+ assert.equal(pos.result({order:{...order,discount:800,total_biaya:0,payment_status:'paid'},replayed:true}).total_biaya,0);
+});
+
+test('POS rejects missing customer, unavailable service and excess lines before sending',()=>{
+ const draft=posDraft();draft.customer=undefined;assert.throws(()=>pos.build(draft,posCatalog,'cashier'),/pelanggan/);
+ draft.customer={customer_id:'customer-1'};draft.lines[0].serviceId='missing';assert.throws(()=>pos.build(draft,posCatalog,'cashier'),/layanan aktif/);
+ draft.lines=Array.from({length:101},()=>({key:'1',serviceId:'wash',quantity:'1'}));assert.throws(()=>pos.build(draft,posCatalog,'cashier'),/1–100/);
+});
