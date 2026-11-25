@@ -6,6 +6,7 @@ type AuditAction string
 type AuditEntity string
 
 const (
+	CredentialsVerified   AuditAction = "credentials_verified"
 	ShiftOpened           AuditAction = "shift_opened"
 	ShiftClosed           AuditAction = "shift_closed"
 	ShiftCashMoved        AuditAction = "shift_cash_moved"
@@ -53,7 +54,7 @@ func (a AuditAction) entity() AuditEntity {
 		return CustomerEntity
 	case ServiceConfigured, ServiceUpdated:
 		return ServiceEntity
-	case StaffUpdated, StaffLoggedIn, StaffCreated, StaffBootstrapped, StaffDeactivated, StaffActivated, StaffRoleChanged, StaffPasswordReset:
+	case StaffUpdated, StaffLoggedIn, CredentialsVerified, StaffCreated, StaffBootstrapped, StaffDeactivated, StaffActivated, StaffRoleChanged, StaffPasswordReset:
 		return StaffEntity
 	case ReportGenerated:
 		return ReportEntity
@@ -62,11 +63,11 @@ func (a AuditAction) entity() AuditEntity {
 	}
 }
 
-// AuditEvent deliberately contains only actor/entity IDs and a controlled action.
-// No free-form metadata, passwords, tokens, customer names or contact snapshots.
-// Append-only storage and transactional event emission are later service concerns.
+// AuditEvent has only controlled metadata, never request bodies or PII snapshots.
 type AuditEvent struct {
 	ID, ActorID, EntityID string
+	RequestID             string
+	Metadata              AuditMetadata
 	Action                AuditAction
 	Entity                AuditEntity
 	OccurredAt            time.Time
@@ -85,6 +86,35 @@ func (e AuditEvent) Validate() error {
 	}
 	if e.OccurredAt.IsZero() {
 		return invalid("audit.occurred_at", "Waktu audit wajib diisi.")
+	}
+	if e.RequestID != "" && !ValidAuditRequestID(e.RequestID) {
+		return invalid("audit.request_id", "Identitas permintaan audit tidak valid.")
+	}
+	return e.Metadata.Validate()
+}
+
+func (a AuditAction) Valid() bool { return a.entity() != "" }
+func (e AuditEntity) Valid() bool {
+	switch e {
+	case ShiftEntity, OrderEntity, PaymentEntity, RefundEntity, CustomerEntity, ServiceEntity, StaffEntity, ReportEntity:
+		return true
+	default:
+		return false
+	}
+}
+func ValidAuditRequestID(id string) bool { return identifier("request_id", id) == nil }
+
+type AuditMetadata struct {
+	Version   int64       `json:"version,omitempty"`
+	Status    OrderStatus `json:"status,omitempty"`
+	Role      Role        `json:"role,omitempty"`
+	Active    *bool       `json:"active,omitempty"`
+	UnitPrice *Money      `json:"unit_price,omitempty"`
+}
+
+func (m AuditMetadata) Validate() error {
+	if m.Version < 0 || (m.Status != "" && !m.Status.Valid()) || (m.Role != "" && m.Role != Owner && m.Role != Admin && m.Role != Cashier) || (m.UnitPrice != nil && *m.UnitPrice < 0) {
+		return invalid("audit.metadata", "Metadata audit tidak valid.")
 	}
 	return nil
 }

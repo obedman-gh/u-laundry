@@ -6,6 +6,7 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"errors"
+	"ulaundry/internal/domain"
 	"ulaundry/internal/repository"
 	"ulaundry/internal/security"
 )
@@ -13,7 +14,7 @@ import (
 var _ security.Store = (*Store)(nil)
 
 func authEvent(ctx context.Context, tx *sql.Tx, e security.Event) error {
-	if e.At.IsZero() || len(e.RequestID) == 0 || len(e.RequestID) > 100 {
+	if e.At.IsZero() || !domain.ValidAuditRequestID(e.RequestID) {
 		return security.ErrUnavailable
 	}
 	switch e.Kind {

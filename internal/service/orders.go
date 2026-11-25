@@ -125,7 +125,7 @@ func (s *Orders) Create(ctx context.Context, actor string, in OrderInput) (Creat
 		if err := tx.AddTracking(ctx, order.ID(), trackingHash, at.Add(domain.TrackingLifetime)); err != nil {
 			return err
 		}
-		if err := audit(ctx, tx, s.runtime, a.ID, domain.OrderCreated, domain.OrderEntity, order.ID(), at); err != nil {
+		if err := audit(ctx, tx, s.runtime, a.ID, domain.OrderCreated, domain.OrderEntity, order.ID(), at, domain.AuditMetadata{Version: 1, Status: order.Status()}); err != nil {
 			return err
 		}
 		if in.Discount > 0 {
@@ -206,7 +206,7 @@ func (s *Orders) transition(ctx context.Context, actor, id string, to domain.Ord
 		if action == CancelOrder {
 			auditAction = domain.OrderCancelled
 		}
-		if err := audit(ctx, tx, s.runtime, a.ID, auditAction, domain.OrderEntity, id, at); err != nil {
+		if err := audit(ctx, tx, s.runtime, a.ID, auditAction, domain.OrderEntity, id, at, domain.AuditMetadata{Version: r.Version + 1, Status: r.Order.Status()}); err != nil {
 			return err
 		}
 		r.Version++

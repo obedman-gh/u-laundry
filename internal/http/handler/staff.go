@@ -121,7 +121,7 @@ func (h *Handler) StaffAudit(w http.ResponseWriter, r *http.Request) {
 	}
 	out := make([]dto.AuditResponse, 0, len(records))
 	for _, v := range records {
-		out = append(out, dto.AuditResponse{ID: v.ID, ActorID: v.ActorID, Action: string(v.Action), Entity: string(v.Entity), EntityID: v.EntityID, OccurredAt: v.OccurredAt})
+		out = append(out, dto.AuditResponse{ID: v.ID, ActorID: v.ActorID, Action: string(v.Action), Entity: string(v.Entity), EntityID: v.EntityID, OccurredAt: v.OccurredAt, RequestID: v.RequestID, Metadata: v.Metadata})
 	}
 	response.JSON(w, r, 200, out)
 }

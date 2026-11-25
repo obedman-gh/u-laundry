@@ -60,7 +60,11 @@ type ShiftUseCase interface {
 	Daily(context.Context, string, string) (service.ShiftDay, error)
 	Entries(context.Context, string, string, repository.Page) ([]domain.LedgerEntry, error)
 }
+type AuditUseCase interface {
+	List(context.Context, string, repository.AuditFilter) (service.AuditHistory, error)
+}
 type Dependencies struct {
+	Audit     AuditUseCase
 	Shifts    ShiftUseCase
 	Staff     StaffUseCase
 	Sessions  *security.Manager

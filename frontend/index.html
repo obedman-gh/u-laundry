@@ -29,6 +29,7 @@
   <body>
     <h2>👕 Daftar Antrean ULaundry</h2>
     <a id="staff-link" href="/staff.html" hidden>Pengelolaan staf</a>
+    <a id="audit-link" href="/audit.html" hidden>Riwayat audit</a>
     <a href="/customers.html">Pelanggan</a>
     <a href="/shifts.html">Kas dan shift</a>
     <a id="services-link" href="/services.html" hidden>Layanan dan harga</a>
@@ -58,6 +59,7 @@
           const session = await read(await fetch("/api/session", { credentials: "same-origin" }));
           csrfToken = session.csrf_token;
           document.getElementById("staff-link").hidden = session.role !== "owner";
+          document.getElementById("audit-link").hidden = session.role !== "owner";
           document.getElementById("services-link").hidden = session.role !== "owner" && session.role !== "admin";
           logout.disabled = false;
           const orders = await read(await fetch("/api/pesanan", { credentials: "same-origin" }));

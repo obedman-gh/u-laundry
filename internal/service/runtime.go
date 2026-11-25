@@ -84,9 +84,9 @@ const (
 
 func Allowed(role domain.Role, action Action) bool {
 	switch action {
-	case ManageStaff, ManageConfiguration:
+	case ManageStaff, ManageConfiguration, ReadAudit:
 		return role == domain.Owner
-	case ConfigureService, CancelOrder, GenerateReport, ReadAudit, ApproveDiscount, RefundPayment:
+	case ConfigureService, CancelOrder, GenerateReport, ApproveDiscount, RefundPayment:
 		return role == domain.Owner || role == domain.Admin
 	case CreateCustomer, CreateOrder, ChangeStatus, RecordPayment, ReadOrders, ManageShift:
 		return role == domain.Owner || role == domain.Admin || role == domain.Cashier
@@ -110,10 +110,14 @@ func authorize(ctx context.Context, r repository.UserLookup, id string, action A
 	}
 	return a, nil
 }
-func audit(ctx context.Context, tx repository.AuditAppender, rt Runtime, actor string, action domain.AuditAction, entity domain.AuditEntity, id string, at time.Time) error {
+func audit(ctx context.Context, tx repository.AuditAppender, rt Runtime, actor string, action domain.AuditAction, entity domain.AuditEntity, id string, at time.Time, metadata ...domain.AuditMetadata) error {
 	eventID, err := rt.id()
 	if err != nil {
 		return err
 	}
-	return tx.AppendAudit(ctx, domain.AuditEvent{ID: eventID, ActorID: actor, Action: action, Entity: entity, EntityID: id, OccurredAt: at})
+	var safe domain.AuditMetadata
+	if len(metadata) > 0 {
+		safe = metadata[0]
+	}
+	return tx.AppendAudit(ctx, domain.AuditEvent{ID: eventID, ActorID: actor, Action: action, Entity: entity, EntityID: id, OccurredAt: at, Metadata: safe})
 }

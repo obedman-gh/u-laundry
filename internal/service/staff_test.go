@@ -151,7 +151,7 @@ func TestPermissionMatrix(t *testing.T) {
 	actions := []Action{ManageStaff, ManageConfiguration, ReadAudit, ApproveDiscount, ConfigureService, CancelOrder, GenerateReport, CreateCustomer, CreateOrder, ChangeStatus, RecordPayment, RefundPayment, ReadOrders, ManageShift}
 	for _, role := range []domain.Role{domain.Owner, domain.Admin, domain.Cashier, "unknown"} {
 		for _, action := range actions {
-			want := role == domain.Owner || role == domain.Admin && action != ManageStaff && action != ManageConfiguration || role == domain.Cashier && (action == CreateCustomer || action == CreateOrder || action == ChangeStatus || action == RecordPayment || action == ReadOrders || action == ManageShift)
+			want := role == domain.Owner || role == domain.Admin && action != ManageStaff && action != ManageConfiguration && action != ReadAudit || role == domain.Cashier && (action == CreateCustomer || action == CreateOrder || action == ChangeStatus || action == RecordPayment || action == ReadOrders || action == ManageShift)
 			if Allowed(role, action) != want {
 				t.Fatalf("permission mismatch %s/%s", role, action)
 			}

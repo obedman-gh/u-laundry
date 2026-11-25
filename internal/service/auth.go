@@ -62,7 +62,7 @@ func (s *Auth) Login(ctx context.Context, username, password string) (LoginResul
 		if token == "" {
 			return errors.New("Penerbit token tidak menghasilkan token")
 		}
-		if err := audit(ctx, tx, s.runtime, credentials.Staff.ID, domain.StaffLoggedIn, domain.StaffEntity, credentials.Staff.ID, at); err != nil {
+		if err := audit(ctx, tx, s.runtime, credentials.Staff.ID, domain.CredentialsVerified, domain.StaffEntity, credentials.Staff.ID, at); err != nil {
 			return err
 		}
 		result = LoginResult{Token: token, Name: credentials.Staff.Name, CredentialFingerprint: sha256.Sum256([]byte(credentials.PasswordHash))}

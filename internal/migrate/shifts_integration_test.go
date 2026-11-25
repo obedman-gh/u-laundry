@@ -62,7 +62,7 @@ INSERT INTO ledger_entries(id,type,amount,description,recorded_by,occurred_at,me
 		t.Fatal(err)
 	}
 	states, err := Status(ctx, db)
-	if err != nil || len(states) != 11 || states[10].AppliedAt == nil {
+	if err != nil || len(states) != 12 || states[10].AppliedAt == nil {
 		t.Fatal("shift migration pending", err)
 	}
 	if err = Up(ctx, db); err != nil {

@@ -41,6 +41,7 @@ func run(ctx context.Context) error {
 	uow := service.WithAccessAudit(store, store)
 	runtime := service.Runtime{Clock: platform.SystemClock{}, IDs: platform.RandomIDs{}, Tokens: platform.RandomTokens{}}
 	use := handler.Dependencies{
+		Audit:     service.NewAuditTrail(uow, runtime),
 		Shifts:    service.NewShifts(uow, runtime),
 		Staff:     service.NewStaffManagement(uow, runtime, platform.Passwords{}),
 		Customers: service.NewCustomers(uow, runtime), Catalog: service.NewCatalog(uow, runtime), Orders: service.NewOrders(uow, runtime), Payments: service.NewPayments(uow, runtime),

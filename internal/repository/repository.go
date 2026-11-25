@@ -166,6 +166,7 @@ type UserRegistration interface {
 	AddStaff(context.Context, domain.Staff, string) error
 }
 type AuditReader interface {
+	AuditQueries
 	AuditForEntity(context.Context, domain.AuditEntity, string, Page) ([]domain.AuditEvent, error)
 }
 type AuditAppender interface {

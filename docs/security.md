@@ -1,6 +1,6 @@
-# Keamanan autentikasi dan authorization ULaundry — hari 10
+# Keamanan autentikasi dan authorization ULaundry — hari 17
 
-Diperbarui 9 November 2026, Asia/Makassar. Berlaku untuk server domain Go/PostgreSQL saat ini; belum merupakan penerimaan keamanan produksi menyeluruh. Tidak ada akun, password, sesi operasional, .env atau deployment pengguna yang diubah dalam pekerjaan ini.
+Diperbarui 25 November 2026, Asia/Makassar. Berlaku untuk server domain Go/PostgreSQL saat ini; belum merupakan penerimaan keamanan produksi menyeluruh. Tidak ada akun, password, sesi operasional, .env atau deployment pengguna yang diubah dalam pekerjaan ini. Audit lengkap, retensi dan upgrade schema 12 dijelaskan pada [audit.md](audit.md).
 
 ## Audit dan keputusan penyimpanan
 
@@ -43,7 +43,7 @@ Batas: limiter per proses dan reset saat restart. Untuk banyak instance gunakan 
 
 Migration 000005 additive menambah staff_sessions dan auth_events serta trigger pencabutan; SQL versi 000001–000004 tidak diubah. auth_events append-only berisi kind (login_success/login_failure/login_limited/logout), actor ID nullable, request ID server dan waktu. Kegagalan anonim tidak dibuatkan akun fiktif dan tidak mencatat username yang dikirim, peer/IP, password, token maupun hash credential.
 
-Audit keamanan login_success dibuat atomik bersama registrasi sesi; logout atomik dengan pencabutan. Audit staff_logged_in existing tetap menandai verifikasi credential sukses pada transaksi use case, sebelum fase registrasi sesi. Bila fase berikut gagal, login HTTP tetap gagal dan tidak mengirim cookie; auth_events tidak mengklaim sesi berhasil. Kegagalan credential dicatat di auth_events dalam transaksi terpisah agar tidak hilang bersama rollback autentikasi. Bila audit gagal, error dipropagasikan dan tidak diklaim berhasil.
+Audit keamanan login_success dibuat atomik bersama registrasi sesi; logout atomik dengan pencabutan. Mulai Hari 17, audit bisnis credentials_verified menandai verifikasi credential/penandatanganan token sebelum registrasi sesi; staff_logged_in historis tetap sebagai verifikasi lama. Bila fase registrasi gagal, login HTTP gagal tanpa cookie dan tidak ada login_success/sesi palsu. Kegagalan credential dicatat di auth_events dalam transaksi terpisah agar tidak hilang bersama rollback autentikasi. Bila audit gagal, error dipropagasikan dan tidak diklaim berhasil.
 
 Runtime memerlukan hak SELECT/INSERT/UPDATE staff_sessions, INSERT auth_events beserta sequence identity, dan hak bisnis existing. Tidak memerlukan PostgreSQL superuser atau ekstensi baru. Trigger berjalan dengan hak invoker; account-management writer nanti juga memerlukan hak pencabutan sesi. auth_events tidak boleh UPDATE/DELETE melalui alur runtime. Retensi audit/cleanup sesi kedaluwarsa belum diotomatisasi; jangan truncate histori atau menghapus sesi aktif untuk setup biasa.
 
@@ -85,3 +85,11 @@ Owner saja dapat mengelola staf; admin/cashier tidak dapat menaikkan role melalu
 auth_events kini juga mempunyai kind access_denied dan kolom permission terkontrol. Dengan decorator WithAccessAudit pada composition root, denial direkam sesudah transaksi/view ditolak selesai; audit tetap ada meskipun perubahan bisnis rollback. Password/hash/token dan payload penolakan tidak disalin. Bila recorder gagal, kegagalan dipropagasikan. Mutation audit staff_created/staff_activated/staff_deactivated/staff_role_changed/staff_password_reset dan staff_bootstrapped tetap di audit_events append-only, tanpa password lama/baru.
 
 Scope yang belum diuji tetap browser/terminal nyata, DB TLS produksi dan deployment. Tidak ada perubahan/reset credential operasional pada tugas hari 10; lihat [laporan hari 10](progress/day-10.md).
+
+## Audit trail hari 17
+
+`GET /api/audit/events` dan `/audit.html` menyatukan projection bisnis/keamanan dengan filter WITA, aksi, source, actor/target/request ID serta pagination. Izin read_audit sekarang **owner aktif saja**, termasuk endpoint objek `/api/audit`; admin/cashier mendapat 403 meskipun claim lama menyebut owner. Ini mempersempit kontrak Hari 10; izin laporan dan katalog owner/admin tetap.
+
+Schema 12 menyimpan korelasi server yang sama dengan X-Request-ID respons; caller tidak memilih ID. Command non-HTTP mendapat ID acak. Request ID historis tetap NULL. Metadata hanya version/status/role/active/unit_price bertipe dan diperiksa domain/constraint JSONB; tanpa payload, credential, token, secret atau snapshot PII. Login anonim tidak menyimpan username percobaan; permission denial tetap enum.
+
+UPDATE/DELETE serta TRUNCATE kedua tabel audit ditolak trigger. Tidak ada HTTP mutasi/purge; role runtime tetap harus tanpa DDL/superuser. Transaksi gagal tidak menyisakan audit sukses bisnis; login_success/logout tetap atomik dengan sesi/revocation. Minimum retensi bisnis 24 bulan, keamanan 90 hari dan arsip privat terverifikasi dijelaskan di [audit.md](audit.md#retensi-operasional); belum ada penghapusan otomatis atau perubahan histori nyata. Penerimaan keamanan produksi, TLS dan role deployment tetap terbuka.

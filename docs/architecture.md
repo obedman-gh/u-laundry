@@ -1,4 +1,4 @@
-# Arsitektur ULaundry — hari 16
+# Arsitektur ULaundry — hari 17
 
 Go/net/http, PostgreSQL dan frontend sederhana dipertahankan. Service/use case kini aktif pada composition root dan handler. Tidak ada SQL, handle DB, atau pengaturan transaksi dalam handler. Ini belum merupakan bukti kesiapan produksi atau migrasi data operasional.
 
@@ -19,6 +19,8 @@ middleware -> JWT validation + actor ID in context
 `cmd/server` menyusun dependency konkret. App hanya memiliki lifecycle server/pool dan router; pool ditutup setelah HTTP drain. Handler menerima interface use case untuk decode/response/template. Service tidak mengimpor HTTP, database/sql atau adapter postgres. Repository contracts mengimpor domain, bukan adapter. Domain hanya standard library. Tidak ada DB global, framework DI atau dependency baru.
 
 ## Pemilik workflow
+
+Audit Hari 17: `AuditTrail` memeriksa owner aktif lalu membaca projection gabungan audit_events/auth_events melalui `AuditQueries` pada snapshot View. Handler menangani query/DTO; halaman menggunakan safe DOM. Adapter append audit menambahkan korelasi HTTP server atau ID acak untuk command, serta menyimpan metadata domain bertipe. Semua mutasi bisnis tetap mengirim audit dalam transaksi semula. credentials_verified dibedakan dari login_success atomik registrasi sesi. Detail batas/retensi/upgrade pada [audit.md](audit.md).
 
 | Service | Intent dan hasil |
 |---|---|

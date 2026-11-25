@@ -134,7 +134,7 @@ VALUES('order-before-upgrade','customer','Synthetic Customer','','',$1,$1,'actor
 		t.Fatal(err)
 	}
 	after, err := migrate.Status(ctx, db)
-	if err != nil || len(after) != 11 || after[7].AppliedAt == nil {
+	if err != nil || len(after) != 12 || after[7].AppliedAt == nil {
 		t.Fatal("schema 8", err)
 	}
 	for i := 0; i < 7; i++ {

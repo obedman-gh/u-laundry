@@ -25,6 +25,10 @@ type endpointRecorder struct {
 	id   string
 }
 
+func (e *endpointRecorder) AuditEvents(w http.ResponseWriter, r *http.Request) {
+	e.record("audit-events", w, r)
+}
+
 func (e *endpointRecorder) DashboardReport(w http.ResponseWriter, r *http.Request) {
 	e.record("dashboard-report", w, r)
 }
@@ -130,6 +134,7 @@ func TestExistingRoutes(t *testing.T) {
 		private                   bool
 	}{
 		{"GET", "/api/health", "health", "", false},
+		{"GET", "/api/audit/events", "audit-events", "", true},
 		{"GET", "/api/laporan/dashboard", "dashboard-report", "", true},
 		{"GET", "/api/laporan/orders?kind=receivable", "order-report", "", true},
 		{"GET", "/api/laporan/ledger?format=csv", "ledger-report", "", true},

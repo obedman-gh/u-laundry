@@ -1,8 +1,10 @@
 # Database dan migration ULaundry
 
-Status hari 15 (25 November 2026): sebelas migration forward-only. Versi 11 menambah shift kasir, receipt mutasi kas dan relasi ledger; upgrade 10→11 serta concurrency diverifikasi pada PostgreSQL **16.14** test terisolasi. Skema operasional/VM belum diperiksa atau dimigrasi. Server tidak menjalankan DDL saat startup. Semua objek aplikasi berada pada schema `public`.
+Status hari 17 (25 November 2026): dua belas migration forward-only. Versi 12 menambah request correlation/metadata dan penguatan append-only audit; versi 11 tetap menyediakan shift. Upgrade audit 11→12 diverifikasi pada PostgreSQL **16.14** test terisolasi. Skema operasional/VM belum diperiksa atau dimigrasi. Server tidak menjalankan DDL saat startup. Semua objek aplikasi berada pada schema `public`.
 
 ## Keputusan alat
+
+Versi terkini **000012_audit_trail**: request_id historis NULL tetap, metadata default `{}`, INSERT bisnis baru wajib korelasi, metadata dibatasi tipe/allowlist JSONB, dan kedua tabel audit menolak TRUNCATE selain UPDATE/DELETE existing. Indeks waktu/aksi/request ID mendukung penelusuran. SQL 1–11 immutable; seed demo memakai guard schema 12. Upgrade wajib backup/restore salinan dan satu writer; tidak ada down otomatis. Binary schema ≤11 bukan rollback writer kompatibel karena tidak memasok korelasi/aksi baru. Gunakan forward fix/binary schema 12, tanpa mematikan guard atau menghapus histori. Retensi, privilege dan detail di [audit.md](audit.md).
 
 Gunakan runner kecil `cmd/migrate` / `internal/migrate`, `database/sql`, driver `lib/pq` yang sudah ada, dan SQL tertanam dengan `go:embed`. Tidak menambah dependency atau executable eksternal. Skema transaksional saat ini belum membutuhkan framework migration; cakupan runner sengaja dibatasi:
 

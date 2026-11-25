@@ -11,6 +11,7 @@ import (
 
 // Endpoints allows routing to be checked independently of SQL and bootstrap.
 type Endpoints interface {
+	AuditEvents(http.ResponseWriter, *http.Request)
 	DashboardReport(http.ResponseWriter, *http.Request)
 	ReportOrders(http.ResponseWriter, *http.Request)
 	ReportLedger(http.ResponseWriter, *http.Request)
@@ -79,6 +80,7 @@ func NewRouter(h Endpoints, m *middleware.Middleware, assets http.FileSystem) ht
 		})
 	}
 	register("/api/health", map[string]http.HandlerFunc{"GET": h.HealthCheck})
+	register("/api/audit/events", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.AuditEvents)})
 	register("/api/laporan/dashboard", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.DashboardReport)})
 	register("/api/laporan/orders", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.ReportOrders)})
 	register("/api/laporan/ledger", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.ReportLedger)})

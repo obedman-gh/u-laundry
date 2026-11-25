@@ -1,6 +1,9 @@
 package dto
 
-import "time"
+import (
+	"time"
+	"ulaundry/internal/domain"
+)
 
 type LoginResponse struct {
 	CSRFToken string    `json:"csrf_token"`
@@ -139,10 +142,27 @@ type StaffResponse struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 type AuditResponse struct {
-	ID         string    `json:"id"`
-	ActorID    string    `json:"actor_id"`
-	Action     string    `json:"action"`
-	Entity     string    `json:"entity"`
-	EntityID   string    `json:"entity_id"`
-	OccurredAt time.Time `json:"occurred_at"`
+	ID         string               `json:"id"`
+	ActorID    string               `json:"actor_id"`
+	Action     string               `json:"action"`
+	Entity     string               `json:"entity"`
+	EntityID   string               `json:"entity_id"`
+	OccurredAt time.Time            `json:"occurred_at"`
+	RequestID  string               `json:"request_id"`
+	Metadata   domain.AuditMetadata `json:"metadata"`
+}
+
+type AuditRecordResponse struct {
+	AuditResponse
+	Source     string `json:"source"`
+	Permission string `json:"permission,omitempty"`
+}
+type AuditHistoryResponse struct {
+	From     time.Time             `json:"from"`
+	To       time.Time             `json:"to"`
+	Timezone string                `json:"timezone"`
+	Limit    int                   `json:"limit"`
+	Offset   int                   `json:"offset"`
+	HasMore  bool                  `json:"has_more"`
+	Items    []AuditRecordResponse `json:"items"`
 }

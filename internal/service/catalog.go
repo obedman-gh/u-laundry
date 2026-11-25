@@ -75,7 +75,7 @@ func (s *Catalog) Configure(ctx context.Context, actor string, in ServiceInput) 
 		if err := tx.AppendServiceRevision(ctx, repository.ServiceRevision{ServiceRecord: repository.ServiceRecord{Service: v, Version: version}, ActorID: a.ID}); err != nil {
 			return err
 		}
-		if err := audit(ctx, tx, s.runtime, a.ID, domain.ServiceConfigured, domain.ServiceEntity, v.ID, at); err != nil {
+		if err := audit(ctx, tx, s.runtime, a.ID, domain.ServiceConfigured, domain.ServiceEntity, v.ID, at, domain.AuditMetadata{Version: version, Active: &v.Active, UnitPrice: &v.UnitPrice}); err != nil {
 			return err
 		}
 		result = repository.ServiceRecord{Service: v, Version: version}

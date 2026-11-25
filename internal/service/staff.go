@@ -84,7 +84,7 @@ func (s *StaffManagement) create(ctx context.Context, actor string, in StaffInpu
 			actor = id
 			action = domain.StaffBootstrapped
 		}
-		if err := audit(ctx, tx, s.runtime, actor, action, domain.StaffEntity, id, at); err != nil {
+		if err := audit(ctx, tx, s.runtime, actor, action, domain.StaffEntity, id, at, domain.AuditMetadata{Version: 1, Role: v.Role, Active: &v.Active}); err != nil {
 			return err
 		}
 		result = repository.StaffRecord{Staff: v, Version: 1}
@@ -185,7 +185,14 @@ func (s *StaffManagement) Change(ctx context.Context, actor, id, operation strin
 		if err := tx.UpdateStaff(ctx, v.Staff, v.Version, hash); err != nil {
 			return err
 		}
-		if err := audit(ctx, tx, s.runtime, actor, action, domain.StaffEntity, id, at); err != nil {
+		meta := domain.AuditMetadata{Version: v.Version + 1}
+		if operation == "role" {
+			meta.Role = v.Staff.Role
+		}
+		if operation == "active" {
+			meta.Active = &v.Staff.Active
+		}
+		if err := audit(ctx, tx, s.runtime, actor, action, domain.StaffEntity, id, at, meta); err != nil {
 			return err
 		}
 		v.Version++

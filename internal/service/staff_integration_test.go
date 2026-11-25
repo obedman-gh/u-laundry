@@ -185,9 +185,8 @@ func TestPostgresStaffAdministration(t *testing.T) {
 		}
 		_, err = s.List(ctx, updated.Staff.ID, repository.Page{})
 		requireDomain(t, err, domain.Forbidden, "forbidden")
-		if _, err = s.Audit(ctx, updated.Staff.ID, domain.StaffEntity, updated.Staff.ID, repository.Page{}); err != nil {
-			t.Fatal("admin audit permission missing", err)
-		}
+		_, err = s.Audit(ctx, updated.Staff.ID, domain.StaffEntity, updated.Staff.ID, repository.Page{})
+		requireDomain(t, err, domain.Forbidden, "forbidden")
 		old = openSession(updated)
 		updated, err = s.Change(ctx, "owner-existing", updated.Staff.ID, "password", StaffChange{Version: 2, Password: "Frasa sandi pengganti sintetis"})
 		if err != nil {

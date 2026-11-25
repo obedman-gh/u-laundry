@@ -649,7 +649,7 @@ func TestAuthenticationGenericFailureAndAudit(t *testing.T) {
 		}
 	}
 	result, err := s.Login(ctx, "staff.test", "correct")
-	if err != nil || result.Token != "signed" || len(u.state.audits) != 1 || u.state.audits[0].Action != domain.StaffLoggedIn {
+	if err != nil || result.Token != "signed" || len(u.state.audits) != 1 || u.state.audits[0].Action != domain.CredentialsVerified {
 		t.Fatal("login audit", err)
 	}
 	u, rt = fixture(t, domain.Cashier)

@@ -80,7 +80,7 @@ INSERT INTO order_tracking_tokens(order_id,token_hash)VALUES('existing-order',de
 		t.Fatal(err)
 	}
 	after, err := migrate.Status(ctx, db)
-	if err != nil || len(after) != 11 || after[6].AppliedAt == nil {
+	if err != nil || len(after) != 12 || after[6].AppliedAt == nil {
 		t.Fatal("upgrade", err)
 	}
 	for i := 0; i < 6; i++ {

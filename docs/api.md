@@ -1,6 +1,6 @@
-# Kontrak HTTP API — hari 16
+# Kontrak HTTP API — hari 17
 
-Server memakai storage domain hingga migration 000011 dan autentikasi existing. Ini perubahan kontrak dari handler legacy: tidak menerima total/harga/status klien saat create order; data/akun pesanan-kasir-keuangan lama belum diimpor. Jangan aktifkan pada data operasional sebelum mapping, backup/restore dan rekonsiliasi; lihat [architecture.md](architecture.md).
+Server memakai storage domain hingga migration 000012 dan autentikasi existing. Ini perubahan kontrak dari handler legacy: tidak menerima total/harga/status klien saat create order; data/akun pesanan-kasir-keuangan lama belum diimpor. Jangan aktifkan pada data operasional sebelum mapping, backup/restore dan rekonsiliasi; lihat [architecture.md](architecture.md).
 
 Semua body JSON memakai satu Content-Type application/json (charset UTF-8 opsional), maksimal 64 KiB termasuk whitespace, satu objek UTF-8 dan tanpa field asing. Content-Encoding selain identity atau header encoding berulang ditolak. Field duplikat, termasuk escape/alias kapitalisasi dan objek item bersarang, ditolak sebelum use case dipanggil. Rupiah dan gram/jumlah berupa integer. Cookie sesi HttpOnly diperlukan selain login/health/tracking. Bearer/localStorage tidak diterima lagi. JWT memerlukan HS256, issuer/audience/iat/exp/sub/username/role/jti dan registrasi sesi PostgreSQL; role/active tetap dimuat ulang setiap use case. Mutasi privat memerlukan X-CSRF-Token dan Origin persis PUBLIC_BASE_URL; login memerlukan Origin tersebut tanpa sesi awal. Owner pertama dibuat dengan command bootstrap-owner pada tabel staff kosong; staf berikutnya dikelola owner melalui API/UI. Utilitas setup-kasir lama hanya menyentuh tabel legacy dan bukan jalur akun domain.
 
@@ -8,6 +8,7 @@ Semua body JSON memakai satu Content-Type application/json (charset UTF-8 opsion
 |---|---|
 | POST /api/login | `{ "username":"...", "password":"..." }`; cookie sesi + nama/pesan/csrf_token/expires_at, tanpa JWT JSON; failure generik dan 429 rate limit |
 | GET /api/session | Sesi aktif; user_id/username/role/csrf_token/expires_at, no-store |
+| GET /api/audit/events | Owner aktif; filter from/to/action/source/actor_id/entity/entity_id/request_id, limit/offset; audit bisnis + keamanan, default 30 hari WITA |
 | POST /api/logout | Cookie + X-CSRF-Token/Origin; revoke persisten dan hapus cookie; cookie lama 401 |
 | GET /api/health | Ping database; 200 sehat, 503 health_unavailable saat gagal; bukan liveness/readiness terpisah |
 | POST /api/customers | Staf aktif; name wajib, contact/address/notes opsional -> customer_id/name |
@@ -195,7 +196,7 @@ Izin berasal dari service.Allowed dan staf aktif yang dimuat ulang di use case, 
 | Kelola shift sendiri (`manage_shift`) | Ya | Ya | Ya |
 | Lihat shift dan ringkasan semua staf | Ya | Ya | Tidak |
 | Laporan kas (`generate_report`) | Ya | Ya | Tidak |
-| Baca audit bisnis berfilter objek (`read_audit`) | Ya | Ya | Tidak |
+| Baca audit bisnis/keamanan (`read_audit`) | Ya | Tidak | Tidak |
 | Konfigurasi aplikasi (`manage_configuration`, policy yang dicadangkan) | Ya | Tidak | Tidak |
 | Login/logout/sesi sendiri | Ya | Ya | Ya |
 
@@ -212,9 +213,9 @@ Semua endpoint berikut memerlukan cookie aktif. Mutasi memerlukan Origin exact d
 | PUT /api/staff/{id}/active | Owner; `{active:boolean,version:integer}` → 200 |
 | PUT /api/staff/{id}/role | Owner; `{role:owner/admin/cashier,version:integer}` → 200 |
 | POST /api/staff/{id}/reset-password | Owner; `{password,version:integer}` → 200 tanpa password |
-| GET /api/audit?entity=staff&entity_id=ID&limit=20&offset=0 | Owner/admin; array audit bisnis untuk objek yang diminta |
+| GET /api/audit?entity=staff&entity_id=ID&limit=20&offset=0 | Owner; array audit bisnis objek, termasuk request_id/metadata |
 
-Audit entity yang tersedia: staff/customer/service/order/payment/refund/shift/report; refund memakai action payment_refunded dan entity_id refund ID. entity_id wajib berformat ID sah. Audit keamanan penolakan tetap di auth_events, belum menyediakan UI penelusuran umum (scope audit lengkap hari 17). Tidak ada endpoint hapus akun atau HTTP bootstrap publik. Password baru mengikuti policy hari 09 (minimal 12 karakter, maksimal 72 byte bcrypt); username 3–50 ASCII huruf/angka/titik/underscore/hyphen, unik exact/case-sensitive sebagaimana schema existing. Nama maksimal 100 karakter. Field actor_id/password_hash/active pada create ditolak sebagai unknown field.
+Audit entity yang tersedia: staff/customer/service/order/payment/refund/shift/report; refund memakai action payment_refunded dan entity_id refund ID. entity_id wajib berformat ID sah pada endpoint objek. Halaman `/audit.html` dan `/api/audit/events` menyediakan penelusuran umum owner-only, termasuk auth_events. Endpoint baru mengembalikan from/to/timezone/limit/offset/has_more/items; item berisi source/id/actor_id/action/entity/entity_id/occurred_at/request_id/metadata dan permission terkontrol bila denial. Request ID historis dapat kosong. Kontrak dan retensi di [audit.md](audit.md). Tidak ada endpoint hapus akun atau HTTP bootstrap publik. Password baru mengikuti policy hari 09 (minimal 12 karakter, maksimal 72 byte bcrypt); username 3–50 ASCII huruf/angka/titik/underscore/hyphen, unik exact/case-sensitive sebagaimana schema existing. Nama maksimal 100 karakter. Field actor_id/password_hash/active pada create ditolak sebagai unknown field.
 
 Perubahan memakai expected version. Form stale memberi 409 dan harus memuat ulang; username duplikat 409; target tak ditemukan 404; invalid input 400; role tidak berhak 403. Owner tidak dapat menonaktifkan atau menurunkan role sendiri (409). Minimal satu owner aktif dipertahankan. Pengelolaan staf dan bootstrap memakai satu transaction-level advisory lock; identitas actor dimuat setelah lock, agar request owner yang sudah kehilangan role tidak melewati pemeriksaan karena antrean.
 

@@ -48,12 +48,17 @@ func (t *roleTx) ListStaff(ctx context.Context, _ repository.Page) ([]repository
 func (t *roleTx) AuditForEntity(context.Context, domain.AuditEntity, string, repository.Page) ([]domain.AuditEvent, error) {
 	return []domain.AuditEvent{}, nil
 }
+
+func (t *roleTx) ListAudit(context.Context, repository.AuditFilter) (repository.AuditPage, error) {
+	return repository.AuditPage{Items: []repository.AuditRecord{}}, nil
+}
 func TestStaffHTTPPermissionMatrixUsesCurrentStaff(t *testing.T) {
 	for _, role := range []domain.Role{domain.Owner, domain.Admin, domain.Cashier} {
 		for _, tc := range []struct {
 			method, path, body string
 			want               int
 		}{
+			{"GET", "/api/audit/events", "", 200},
 			{"GET", "/api/staff", "", 200}, {"POST", "/api/staff", `{"username":"new.test","name":"New","role":"owner","password":"Frasa sandi sintetis"}`, 403}, {"PUT", "/api/staff/target/active", `{"active":false,"version":1}`, 403}, {"PUT", "/api/staff/target/role", `{"role":"owner","version":1}`, 403}, {"POST", "/api/staff/target/reset-password", `{"password":"Frasa sandi sintetis","version":1}`, 403}, {"GET", "/api/audit?entity=staff&entity_id=target", "", 200},
 		} {
 			if role == domain.Owner && tc.method != "GET" {
@@ -73,7 +78,7 @@ func TestStaffHTTPPermissionMatrixUsesCurrentStaff(t *testing.T) {
 					t.Fatal(err)
 				}
 				staff := service.NewStaffManagement(uow, service.Runtime{}, nil)
-				h := handler.New(handler.Dependencies{Staff: staff})
+				h := handler.New(handler.Dependencies{Staff: staff, Audit: service.NewAuditTrail(uow, service.Runtime{Clock: service.ClockFunc(time.Now)})})
 				router := NewRouter(h, middleware.New([]string{manager.Origin}, manager), http.FS(fstest.MapFS{}))
 				r := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 				r.AddCookie(&http.Cookie{Name: manager.CookieName(), Value: token})
@@ -88,7 +93,7 @@ func TestStaffHTTPPermissionMatrixUsesCurrentStaff(t *testing.T) {
 				if strings.HasPrefix(tc.path, "/api/staff") && role != domain.Owner {
 					want = 403
 				}
-				if strings.HasPrefix(tc.path, "/api/audit") && role == domain.Cashier {
+				if strings.HasPrefix(tc.path, "/api/audit") && role != domain.Owner {
 					want = 403
 				}
 				if w.Code != want {
