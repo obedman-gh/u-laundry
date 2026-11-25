@@ -3,9 +3,9 @@
   const el = id => document.getElementById(id), ui = window.ULaundryUI;
   let session, busy = false;
   async function api(path) {
-    const response = await fetch(path,{credentials:'same-origin',cache:'no-store'});
+    if (path === '/api/session') return window.ULaundrySession.get();
+    const response = await window.ULaundrySession.fetch(path,{credentials:'same-origin',cache:'no-store'});
     const data = await response.json().catch(() => ({}));
-    if (response.status === 401) { window.location.href = '/login.html'; throw new Error('Sesi berakhir. Silakan masuk kembali.'); }
     if (!response.ok) throw new Error(data?.error?.message || 'Ringkasan belum dapat dimuat.');
     return data;
   }

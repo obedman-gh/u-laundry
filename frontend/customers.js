@@ -4,9 +4,9 @@
   let csrf = '', selected = null, offset = 0, orderOffset = 0, sequence = 0, busy = false;
   const message = (text, kind = 'info') => { const target = el('message'); if (window.ULaundryUI) window.ULaundryUI.message(target, text, kind); else target.textContent = text; };
   async function api(path, options = {}) {
-    const response = await fetch(path, { credentials: 'same-origin', ...options });
+    if (path === '/api/session') return window.ULaundrySession.get();
+    const response = await window.ULaundrySession.fetch(path, { credentials: 'same-origin', ...options });
     const data = await response.json().catch(() => ({}));
-    if (response.status === 401) { window.location.href = '/login.html'; throw new Error('Sesi berakhir. Silakan masuk kembali.'); }
     if (!response.ok) {
       if (response.status === 409) reset();
       throw new Error(data?.error?.message || 'Permintaan gagal. Silakan muat ulang sebelum mencoba kembali.');

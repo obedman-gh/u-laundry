@@ -3,12 +3,14 @@
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Masuk staf — ULaundry</title>
   <link rel="stylesheet" href="/ui/tokens.css"><link rel="stylesheet" href="/ui/ui.css">
-  <script src="/ui/ui.js" defer></script><script src="/login.js" defer></script>
+  <script src="/ui/ui.js" defer></script>
+  <script src="/ui/session.js" defer></script><script src="/login.js" defer></script>
 <link rel="icon" href="/ui/favicon.svg" type="image/svg+xml"></head><body class="login-page"><main>
   <section class="login-box" aria-labelledby="login-title">
     <div class="app-brand"><span>ULaundry POS</span><small>Perumahan Viola</small></div>
     <h1 id="login-title">Masuk ke akun staf</h1>
     <p class="muted">Gunakan akun yang diberikan oleh pemilik.</p>
+    <p id="login-notice" class="ui-alert" role="status" hidden></p>
     <form id="formLogin">
       <label for="username">Nama pengguna</label>
       <input id="username" name="username" required maxlength="50" autocomplete="username" autocapitalize="none" spellcheck="false" aria-describedby="pesan-error">

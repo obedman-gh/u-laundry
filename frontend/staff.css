@@ -1,3 +1,6 @@
 /* Account management uses the shared forms, cards and tables. */
 #staff-list td:last-child { white-space: nowrap; }
 .scroll table { min-width: 38rem; }
+.field-error { color: var(--color-danger); margin-top: var(--space-2); }
+tr[data-selected="true"] { background: var(--color-background-alt); }
+#edit-title:focus { outline: 3px solid var(--color-action-hover); outline-offset: 3px; }

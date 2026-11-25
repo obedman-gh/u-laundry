@@ -8,7 +8,6 @@
   };
   const roles = {owner:'Pemilik', admin:'Admin', cashier:'Kasir'};
   const statuses = {received:'Diterima', processing:'Diproses', ready:'Siap diambil', collected:'Sudah diambil', cancelled:'Dibatalkan'};
-  let session;
   const routes = [
     ['dashboard','/dashboard.html','Dashboard',['owner','admin']],
     ['orders','/index.html','Antrean',['owner','admin','cashier']],
@@ -81,27 +80,20 @@
     window.addEventListener('offline',() => { connection.hidden = false; });
     window.addEventListener('online',() => { connection.hidden = true; notify('Koneksi kembali tersedia. Muat ulang data bila diperlukan.','info'); });
     document.body.insertBefore(header,main); document.body.insertBefore(connection,main); document.body.insertBefore(navigation,main);
-    // Queue retains its existing logout handler. Other pages share this one.
-    if (page !== 'orders') logout.addEventListener('click',async () => {
-      if (!session?.csrf_token) return;
-      logout.disabled = true;
-      try {
-        const response = await fetch('/api/logout',{method:'POST',credentials:'same-origin',headers:{'X-CSRF-Token':session.csrf_token}});
-        if (response.status !== 401 && !response.ok) throw new Error('Keluar belum berhasil. Silakan coba kembali.');
-        window.location.href = '/login.html';
-      } catch (error) { notify(error.message || 'Koneksi terputus. Silakan coba kembali.','error'); logout.disabled = false; }
-    });
   }
   function setSession(value) {
-    session = value;
     for (const {item,link,allowed} of links) { const visible = allowed.includes(value.role); item.hidden = !visible; link.hidden = !visible; }
     if (account) account.textContent = `${value.username || 'Staf'} · ${roles[value.role] || 'Staf'}`;
-    if (logout) logout.disabled = false;
+  }
+  function clearSession() {
+    for (const {item,link} of links) { item.hidden = true; link.hidden = true; }
+    if (account) account.textContent = 'Sesi tidak aktif';
+    if (logout) logout.disabled = true;
   }
   for (const region of document.querySelectorAll('.scroll')) {
     region.tabIndex = 0;
     if (!region.hasAttribute('role')) region.setAttribute('role','region');
     if (!region.hasAttribute('aria-label')) region.setAttribute('aria-label','Tabel data, geser untuk melihat seluruh kolom');
   }
-  window.ULaundryUI = Object.freeze({setSession,message,notify,state,money,statusLabel:value => statuses[value] || value});
+  window.ULaundryUI = Object.freeze({setSession,clearSession,message,notify,state,money,statusLabel:value => statuses[value] || value});
 })();

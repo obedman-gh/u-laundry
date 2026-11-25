@@ -22,9 +22,9 @@
     element('previous').disabled = value || offset === 0; element('next').disabled = value || !more; element('reload').disabled = value;
   }
   async function api(path) {
-    const response = await fetch(path, {credentials:'same-origin', cache:'no-store'});
+    if (path === '/api/session') return window.ULaundrySession.get();
+    const response = await window.ULaundrySession.fetch(path, {credentials:'same-origin', cache:'no-store'});
     const data = await response.json().catch(() => ({}));
-    if (response.status === 401) { element('audit-panel').hidden = true; window.location.href = '/login.html'; throw new Error('Sesi berakhir. Silakan masuk kembali.'); }
     if (response.status === 403) element('audit-panel').hidden = true;
     if (!response.ok) throw new Error(data?.error?.message || 'Riwayat audit tidak dapat dimuat.');
     return data;

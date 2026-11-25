@@ -1,4 +1,4 @@
-# UI ULaundry — Hari 18
+# UI ULaundry — Hari 18–19
 
 Fondasi bersama memakai HTML semantik, CSS dan JavaScript tanpa framework/build frontend. Identitas ULaundry/Perumahan Viola dan palet existing dipertahankan. Sembilan halaman memakai tokens bersama: login, antrean, dashboard, pelanggan, layanan, staf, kas/shift, audit dan tracking. Go, API, konfigurasi dan migration tidak berubah; schema tetap 12.
 
@@ -37,6 +37,7 @@ frontend/
   ui/tokens.css       palette, typography, spacing, radius, shadows
   ui/ui.css          shell, forms, cards, tables/lists, states, responsive rules
   ui/ui.js           navigation, session presentation, feedback and safe DOM helpers
+  ui/session.js      cookie/CSRF transport, expiry, logout and protected content gate
   ui/favicon.svg     favicon lokal dalam palet existing
   login.html/js      login dan toggle kata sandi
   index.html         antrean, URL / tetap
@@ -50,7 +51,7 @@ frontend/
   tracking.*         tracking publik
 ```
 
-Urutan halaman: tokens.css → ui.css → CSS khusus halaman, lalu ui.js → JS halaman, semuanya lokal dan script `defer`. HTML tidak lagi mempunyai blok CSS/JavaScript inline. HTML lama dirapikan tanpa mengganti ID form, URL, enum, payload atau aturan transaksi. Login/antrean sekarang memakai file script terpisah; fixture test frontend mengikuti sumber tersebut.
+Urutan halaman: tokens.css → ui.css → CSS khusus halaman, lalu ui.js → ui/session.js → JS halaman, semuanya lokal dan script `defer`. Tracking publik hanya memakai ui.js dan tracking.js. HTML tidak mempunyai blok CSS/JavaScript inline. URL, enum, payload dan aturan transaksi tetap; fixture frontend mengikuti script halaman terpisah.
 
 Server tetap melayani `STATIC_DIR` melalui `http.Dir`; salin seluruh `frontend/`, termasuk `ui/`, sebagai satu set. Aset tidak membutuhkan npm, CDN, font eksternal atau proses build frontend. Folder ini dapat dibungkus `embed.FS` pada pekerjaan packaging berikutnya; embedding Go belum diaktifkan agar konfigurasi/lifecycle backend tidak ikut berubah pada tugas UI ini.
 
@@ -59,7 +60,7 @@ Server tetap melayani `STATIC_DIR` melalui `http.Dir`; salin seluruh `frontend/`
 | Komponen | Kontrak |
 |---|---|
 | Shell staf | `<body data-staff-app data-page="orders">` dengan satu `<main>`. ui.js menambahkan header/wordmark, navigasi utama, identitas sesi, tombol keluar dan skip link. Page keys: orders/dashboard/customers/services/staff/shifts/audit |
-| Sesi/navigasi | JS halaman menyerahkan hasil GET session existing ke `ULaundryUI.setSession(session)`; shell tidak melakukan fetch sesi tambahan. Link pemilik/admin/kasir mengikuti role; izin API tetap ditegakkan server |
+| Sesi/navigasi | `ULaundrySession.get()` mendeduplikasi pemeriksaan GET session dan menyerahkan identitas ke shell. Data halaman disembunyikan sampai sesi terkonfirmasi; link mengikuti role. Izin API tetap ditegakkan server |
 | Navigasi ponsel | Tombol Menu dengan aria-expanded/controls; disclosure dalam alur dokumen. Escape mengembalikan fokus ke tombol. Sidebar muncul pada desktop, menu dua kolom pada lebar ≤767px; tanpa focus trap modal |
 | Heading/action | `.page-heading`, `.toolbar`, `.pager`/`#pager`; kontrol membungkus pada layar kecil |
 | Form | Label for/id atau label pembungkus, input/select/textarea dengan tinggi minimum 44px, focus-visible 3px. Validasi native, atribut existing dan validasi harga integer tetap |
@@ -78,13 +79,15 @@ Contoh pemakaian komponen:
 <link rel="stylesheet" href="/ui/tokens.css">
 <link rel="stylesheet" href="/ui/ui.css">
 <script src="/ui/ui.js" defer></script>
+<script src="/ui/session.js" defer></script>
 <script src="/halaman.js" defer></script>
 <!-- Dalam body data-staff-app data-page yang sesuai -->
 <main><section class="card"><h1>Judul halaman</h1></section></main>
 ```
 
 ```javascript
-window.ULaundryUI.setSession(session);
+const session = await window.ULaundrySession.get();
+const response = await window.ULaundrySession.fetch('/api/contoh'); // gunakan route API existing
 window.ULaundryUI.message(document.getElementById('message'), 'Perubahan tersimpan.', 'success');
 window.ULaundryUI.state(container, {
   kind: 'error', title: 'Data belum dapat dimuat',
@@ -98,7 +101,30 @@ Helper hanya membentuk elemen dan textContent, tanpa innerHTML atau template str
 
 `/dashboard.html` adalah fondasi ringkasan owner/admin: pesanan hari ini, penerimaan, piutang, shift aktif, status antrean dan net setelah refund. Data berasal dari `/api/laporan/dashboard` existing, tanpa nilai demo/fallback dalam source aplikasi. Sebelum data valid tidak ada angka sementara; kegagalan menyembunyikan angka lama dan menawarkan retry. Bilangan harus aman ditampilkan sebagai integer JavaScript.
 
-Kasir yang membuka URL tersebut mendapat petunjuk menuju alur operasional tanpa request laporan sensitif. Halaman tidak melakukan polling; refresh membaca laporan dan mengikuti audit server existing. Filter periode, detail laporan, CSV serta penerimaan UI finansial lengkap tetap Hari 22. Login/session/user management acceptance tetap Hari 19, POS/antrean lengkap Hari 20–21. Hari 18 tidak menutup AC15 atau kesiapan produksi seluruh aplikasi.
+Kasir yang membuka URL tersebut mendapat petunjuk menuju alur operasional tanpa request laporan sensitif. Halaman tidak melakukan polling; refresh membaca laporan dan mengikuti audit server existing. Filter periode, detail laporan, CSV serta penerimaan UI finansial lengkap tetap Hari 22. UI login/sesi/staf diverifikasi pada Hari 19; POS/antrean lengkap tetap Hari 20–21. Verifikasi browser mock belum menutup AC15 atau kesiapan produksi seluruh aplikasi.
+
+## Autentikasi dan pengelolaan akun — tindakan — hasil
+
+| Tindakan | Hasil |
+|---|---|
+| Integrasi Hari 09 | POST `/api/login` mengirim JSON melalui same-origin, lalu GET `/api/session` memastikan cookie benar-benar diterima serta username/CSRF sesuai respons login sebelum redirect. JWT tetap hanya cookie HttpOnly; CSRF/identitas/expiry hanya dalam memori. Token legacy dibersihkan pada login dan halaman staf. Tidak ada credential di localStorage/sessionStorage, query, log UI atau BroadcastChannel |
+| Validasi login | Nama pengguna dan password wajib; password maksimal 72 byte UTF-8. Minimum password baru tidak diterapkan pada login agar akun existing tetap dapat masuk. 401 memberi satu pesan generik tanpa membedakan akun/password. 400/403/5xx memakai teks terkontrol; 429 mengikuti Retry-After angka, dibatasi 900 detik, tanpa mencoba masuk otomatis. Password dibersihkan segera setelah submit, gagal dan saat halaman disembunyikan |
+| Sesi dan expiry | `get`, `recheck`, `fetch`, `logout`, `end`, `forbid` menjadi API modul bersama. Fetch hanya menerima route same-origin `/api/`, memakai cookie/no-store dan menolak Authorization. Mutasi memakai CSRF sesi aktif. Timer mengacu expires_at dan Date server; focus, visibility serta pemulihan BFCache memeriksa sesi kembali tanpa memperpanjang masa berlaku |
+| Redirect tanpa loop | 401 pada halaman terlindungi menyembunyikan data, membersihkan input/list dan memakai location.replace sekali ke login dengan reason yang diizinkan. Respons sesi terlambat tidak menghidupkan sesi terminal. Login tetap publik, tanpa pemeriksaan/redirect otomatis saat dibuka; parameter next tidak diikuti. Perubahan actor/role/CSRF meminta masuk ulang |
+| Gangguan pemeriksaan sesi | Offline/503 menyembunyikan konten dan menyediakan Coba kembali; bukan tanda logout. Pemulihan pemeriksaan awal membutuhkan reload agar bootstrap data lengkap. Permintaan tulis tidak diulang oleh modul; server tetap otoritas akses dan hasil transaksi |
+| Logout | POST `/api/logout` memakai cookie/CSRF. Baru setelah sukses atau 401, UI menganggap sesi berakhir. Kegagalan menyediakan retry eksplisit. Keluar dinonaktifkan selama mutasi masih menunggu respons. Event signed-in/signed-out antar-tab tidak berisi identitas/token; tab terlindungi memeriksa perubahan login atau segera menyembunyikan data saat logout |
+| Owner `/staff.html` | Daftar berpaginasi 20 akun, create, pilih akun, ubah role, deactivate/reactivate dan reset password memakai API existing serta expected version. Kasir/admin tidak meminta daftar staf, tidak melihat form atau navigasi pengelolaan; handler UI juga menolak submit tanpa hak. Permission server tetap wajib |
+| Validasi staf | Label/aria-describedby, pesan per kolom, aria-invalid dan fokus kolom pertama; nama 1–100 karakter, username ASCII 3–50, enum peran eksplisit, password baru minimal 12 karakter/maksimal 72 byte sesuai policy Hari 09. Konfirmasi password wajib. Respons error backend tidak ditampilkan mentah; konfirmasi native tidak memuat password |
+| Perubahan sensitif | Password dibersihkan setelah submit, gagal, pembatalan reset dan pergantian pilihan. Pemilihan akun memfokuskan heading editor dan menandai tombol aria-pressed. Role/status sendiri dinonaktifkan; reset sendiri meminta login ulang. Server menjaga owner aktif terakhir dan mencabut sesi target. Konflik/hasil tidak pasti menghapus pilihan dan mewajibkan muat ulang sebelum mutasi berikutnya; create terkonfirmasi dengan refresh gagal tetap dilaporkan berhasil tersimpan |
+| Tema dan aset | Palet/tokens Hari 18 tetap. Tidak ada dependency, framework frontend, endpoint, Go atau migration baru; schema tetap 12. Semua tujuh halaman terlindungi memakai transport sesi bersama; tracking publik tetap terpisah |
+
+## Verifikasi Hari 19 — tindakan — hasil
+
+- `node --test scripts/frontend-contract.test.cjs` — 22 test kontrak/DOM sintetis, termasuk modul sesi nyata: deduplikasi, cookie/CSRF, penolakan lintas origin/Bearer, tanpa retry mutasi, 401 satu kali, outage/identitas berubah, race focus/logout saat mutasi dan respons terlambat. Mock transport halaman tidak menggantikan pengujian browser.
+- Edge headless/API mock lokal — login sukses/gagal generik, 429, cookie tidak diterima, logout sukses/gagal/retry, logout antar-tab, expiry timer/BFCache, pemeriksaan sesi awal/lanjutan gagal lalu pulih, forbidden admin/kasir dan submit paksa ditolak; hasil dicatat di [laporan Hari 19](progress/day-19.md).
+- Owner dengan data sintetis — create/double-submit, role, deactivate/reactivate, reset target/diri sendiri, pagination, UTF-8 password terlalu panjang, konfirmasi tidak cocok, stale version dan respons mutasi tidak terbaca diperiksa. Tidak ada pengiriman ulang oleh UI; staf wajib memeriksa daftar setelah hasil tidak pasti.
+- Desktop 1280px dan viewport Android 360px — tujuh halaman terlindungi bootstrap dengan satu GET session per navigasi, tanpa overflow halaman; login/staf juga diperiksa pada 390px. Skip link/Tab, Enter untuk memilih akun, fokus editor, menu/Escape dan screenshot form ditinjau. Tidak ada exception JavaScript atau console.error; HTTP gagal sengaja disimulasikan untuk failure state.
+- Backend tetap — tidak menjalankan test HTTP/auth backend atau full PostgreSQL suite karena endpoint tidak berubah. Browser memakai mock, bukan bukti cookie Secure melalui HTTPS produksi, Android fisik atau integrasi UI–database nyata. Harness/screenshot sementara berada di cache luar repository; ulangi skenario di atas pada lingkungan acceptance dengan data sintetis sebelum rilis.
 
 ## Verifikasi visual terarah
 
@@ -111,4 +137,4 @@ Periksa kesembilan halaman pada desktop 1280px, tablet 768px dan viewport Androi
 - Print media kas/shift menyembunyikan shell/kontrol; reduced-motion mematikan animasi spinner CSS.
 - Console/JavaScript dan resource error pada alur normal; respons API gagal yang sengaja disimulasikan dibedakan dari exception UI.
 
-Perintah frontend resmi tetap `node --test scripts/frontend-contract.test.cjs`; saat Hari 18 dijalankan 14 test. Syntax dapat diperiksa dengan `node --check` pada file JS yang berubah. Bukti visual memakai Edge headless dan API mock lokal, tanpa PostgreSQL atau automated test backend. Android fisik, printer fisik dan acceptance database end-to-end bukan bukti tugas ini. Hasil aktual ada pada [laporan Hari 18](progress/day-18.md).
+Perintah frontend resmi tetap `node --test scripts/frontend-contract.test.cjs`; Hari 18 menjalankan 14 test, Hari 19 memperluasnya menjadi 22. Syntax dapat diperiksa dengan `node --check` pada file JS yang berubah. Bukti visual memakai Edge headless dan API mock lokal, tanpa PostgreSQL atau automated test backend. Android fisik, printer fisik dan acceptance database end-to-end bukan bukti tugas ini. Bukti fondasi ada pada [laporan Hari 18](progress/day-18.md); tambahan auth/staf pada [laporan Hari 19](progress/day-19.md).

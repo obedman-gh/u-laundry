@@ -9,6 +9,7 @@
     <link rel="stylesheet" href="/ui/tokens.css">
     <link rel="stylesheet" href="/ui/ui.css">
     <script src="/ui/ui.js" defer></script>
+    <script src="/ui/session.js" defer></script>
     <link rel="stylesheet" href="/staff.css">
     <script src="/staff.js" defer></script>
     <link rel="icon" href="/ui/favicon.svg" type="image/svg+xml">
@@ -19,7 +20,7 @@
         Pengelolaan staf
       </h1>
       <p>
-        Hanya pemilik dapat mengelola akun. Kata sandi lama tidak ditampilkan. Perubahan akses atau password mencabut sesi akun terkait.
+        Hanya pemilik dapat mengelola akun. Kata sandi lama tidak ditampilkan. Perubahan akses atau kata sandi mencabut sesi akun terkait.
       </p>
       <p data-state="loading" class="ui-alert" id="message" role="status" aria-live="polite">
         Memeriksa sesi…
@@ -34,10 +35,10 @@
               <thead>
                 <tr>
                   <th scope="col">
-                    Nama / username
+                    Nama / pengguna
                   </th>
                   <th scope="col">
-                    Role
+                    Peran
                   </th>
                   <th scope="col">
                     Status / versi
@@ -71,15 +72,17 @@
             <label for="create-name">
               Nama
             </label>
-            <input id="create-name" required maxlength="100" autocomplete="name">
+            <input id="create-name" required maxlength="100" autocomplete="name" data-staff-field aria-describedby="create-name-error">
+            <small id="create-name-error" class="field-error" hidden></small>
             <label for="create-username">
-              Username
+              Nama pengguna
             </label>
-            <input id="create-username" required minlength="3" maxlength="50" pattern="[A-Za-z0-9_.-]+" autocomplete="off">
+            <input id="create-username" required minlength="3" maxlength="50" pattern="[A-Za-z0-9_.-]+" autocomplete="off" data-staff-field aria-describedby="create-username-error">
+            <small id="create-username-error" class="field-error" hidden></small>
             <label for="create-role">
-              Role
+              Peran
             </label>
-            <select id="create-role">
+            <select id="create-role" data-staff-field aria-describedby="create-role-error">
               <option value="cashier">
                 Kasir
               </option>
@@ -90,23 +93,26 @@
                 Pemilik
               </option>
             </select>
+            <small id="create-role-error" class="field-error" hidden></small>
             <label for="create-password">
               Kata sandi baru
             </label>
-            <input id="create-password" type="password" required minlength="12" maxlength="72" autocomplete="new-password">
+            <input id="create-password" type="password" required minlength="12" maxlength="72" autocomplete="new-password" data-staff-field aria-describedby="create-password-error">
+            <small id="create-password-error" class="field-error" hidden></small>
             <label for="create-confirm">
               Ulangi kata sandi baru
             </label>
-            <input id="create-confirm" type="password" required minlength="12" maxlength="72" autocomplete="new-password">
+            <input id="create-confirm" type="password" required minlength="12" maxlength="72" autocomplete="new-password" data-staff-field aria-describedby="create-confirm-error">
+            <small id="create-confirm-error" class="field-error" hidden></small>
             <small>
-              Minimal 12 karakter, maksimal 72 byte. Gunakan frasa sandi yang tidak umum.
+              Minimal 12 karakter, maksimal 72 byte. Gunakan frasa sandi yang tidak umum. Kata sandi tidak disimpan dalam form setelah permintaan.
             </small>
             <button id="create-button" type="submit">
               Buat akun
             </button>
           </form>
           <div class="card">
-            <h2>
+            <h2 id="edit-title" tabindex="-1">
               Ubah akun terpilih
             </h2>
             <p id="selected">
@@ -114,9 +120,9 @@
             </p>
             <form id="role-form">
               <label for="edit-role">
-                Role baru
+                Peran baru
               </label>
-              <select id="edit-role">
+              <select id="edit-role" data-staff-field aria-describedby="edit-role-error">
                 <option value="cashier">
                   Kasir
                 </option>
@@ -127,8 +133,9 @@
                   Pemilik
                 </option>
               </select>
+              <small id="edit-role-error" class="field-error" hidden></small>
               <button id="role-button" type="submit" disabled>
-                Simpan role
+                Simpan peran
               </button>
             </form>
             <button id="active-button" type="button" disabled>
@@ -139,11 +146,13 @@
               <label for="edit-password">
                 Kata sandi pengganti
               </label>
-              <input id="edit-password" type="password" minlength="12" maxlength="72" required autocomplete="new-password">
+              <input id="edit-password" type="password" minlength="12" maxlength="72" required autocomplete="new-password" data-staff-field aria-describedby="edit-password-error">
+              <small id="edit-password-error" class="field-error" hidden></small>
               <label for="edit-confirm">
                 Ulangi kata sandi pengganti
               </label>
-              <input id="edit-confirm" type="password" minlength="12" maxlength="72" required autocomplete="new-password">
+              <input id="edit-confirm" type="password" minlength="12" maxlength="72" required autocomplete="new-password" data-staff-field aria-describedby="edit-confirm-error">
+              <small id="edit-confirm-error" class="field-error" hidden></small>
               <small>
                 Reset mencabut seluruh sesi akun; tidak memperlihatkan kata sandi lama.
               </small>

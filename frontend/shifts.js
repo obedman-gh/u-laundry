@@ -19,12 +19,12 @@
     el('next').disabled = value || last;
   }
   async function api(path, options = {}) {
+    if (path === '/api/session') return window.ULaundrySession.get();
     let response;
-    try { response = await fetch(path, {credentials:'same-origin',cache:'no-store',...options,
+    try { response = await window.ULaundrySession.fetch(path, {credentials:'same-origin',cache:'no-store',...options,
       headers:{...(options.body ? {'Content-Type':'application/json','X-CSRF-Token':session.csrf_token} : {}),...options.headers}}); }
     catch (_) { throw new Error('Koneksi terputus. Untuk transaksi yang belum mendapat kepastian, coba kembali dengan isian yang sama tanpa memuat ulang halaman.'); }
     const data = await response.json().catch(() => { throw new Error('Respons belum dapat dipastikan. Coba kembali dengan isian yang sama.'); });
-    if (response.status === 401) { el('workspace').hidden = true; window.location.href='/login.html'; throw new Error('Sesi berakhir. Silakan masuk kembali.'); }
     if (!response.ok) { const error = new Error(data?.error?.message || 'Permintaan tidak dapat diproses.'); error.status = response.status; throw error; }
     return data;
   }

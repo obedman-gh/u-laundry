@@ -2,12 +2,13 @@
 
 ULaundry adalah aplikasi operasional laundry. Stack: Go (`net/http`), PostgreSQL, HTML, CSS, dan JavaScript tanpa framework frontend besar.
 
-Status per 25 November 2026: **fondasi UI responsif tahap 18 tersedia, belum layak produksi**. Lihat [komponen/tokens UI](docs/ui.md), [arsitektur](docs/architecture.md), [kontrak API dan perubahan kompatibilitas](docs/api.md), [aturan bisnis](docs/business-rules.md), [aturan finansial](docs/finance.md), [laporan operasional](docs/reports.md), [database](docs/database.md), [audit trail](docs/audit.md), [audit baseline](docs/audit-baseline.md), [kriteria penerimaan](docs/acceptance-criteria.md), [backlog](docs/backlog-30-days.md), [laporan hari 18](docs/progress/day-18.md) dan [keamanan autentikasi](docs/security.md).
+Status per 25 November 2026: **UI autentikasi/sesi dan pengelolaan staf tahap 19 tersedia, belum layak produksi**. Lihat [komponen/tokens UI](docs/ui.md), [arsitektur](docs/architecture.md), [kontrak API dan perubahan kompatibilitas](docs/api.md), [aturan bisnis](docs/business-rules.md), [aturan finansial](docs/finance.md), [laporan operasional](docs/reports.md), [database](docs/database.md), [audit trail](docs/audit.md), [audit baseline](docs/audit-baseline.md), [kriteria penerimaan](docs/acceptance-criteria.md), [backlog](docs/backlog-30-days.md), [laporan hari 19](docs/progress/day-19.md) dan [keamanan autentikasi](docs/security.md).
 
 ## Implementasi saat ini
 
-- Owner dapat mengelola staf melalui /staff.html; API/use case menegakkan matrix izin dan audit. Bootstrap akun pertama tanpa password hardcoded tersedia.
+- Owner dapat mengelola staf melalui /staff.html dengan pagination, validasi per kolom dan reload saat konflik/hasil tidak pasti; API/use case menegakkan matrix izin dan audit. Bootstrap akun pertama tanpa password hardcoded tersedia.
 - Login staf generik dengan bcrypt/JWT HS256, claims wajib, cookie HttpOnly, sesi PostgreSQL, CSRF, logout/revocation dan rate limit; role dimuat ulang pada use case.
+- UI sesi bersama memverifikasi cookie setelah login, menangani logout/expiry tanpa loop, perubahan akun dan logout antar-tab; tema biru dan navigasi responsif dipertahankan. Bukti browser Hari 19 memakai API mock, belum acceptance UI–database nyata.
 - Create/edit/search customer dan riwayat order, configure service, create order dengan perhitungan katalog server, status/version dan cancellation terkontrol, serta daftar/detail berfilter/pagination.
 - Owner/admin mengelola layanan kg/item, harga, durasi, aktif dan urutan melalui `/services.html`; histori revisi dan snapshot order menjaga total transaksi lama.
 - Create, perubahan status dan pembatalan order wajib `Idempotency-Key`; retry identik oleh staf yang sama mengembalikan keadaan order terkini tanpa mengulang efek. Riwayat status privat dan milestone mulai proses tersedia.
@@ -101,7 +102,7 @@ Buka `http://localhost:8080/login.html` sesuai PUBLIC_BASE_URL/origin setelah sc
 | PostgreSQL repository terarah | Isi `ULAUNDRY_TEST_ADMIN_DSN` seperti migration test, lalu `go test ./internal/repository/... -count=1 -timeout=120s -v`; membuat/menghapus DB `ulaundry_repository_test_*`; tidak membaca `.env` |
 | HTTP/middleware/wiring hari 08 | `go test ./internal/http/... ./internal/app -count=1 -timeout=45s` — success/error contract, malformed/oversized/duplicate JSON, query/path, 404/405/HEAD, CORS/JWT, panic redaction, lifecycle; tanpa DB |
 | Autentikasi/session hari 09 | `go test ./internal/security ./internal/http/... ./internal/config ./internal/platform ./internal/app -count=1 -timeout=60s` — claims, cookie/CSRF/logout, rate limit dan startup; integration auth opt-in: lihat docs/security.md |
-| Kontrak frontend | `node --test scripts/frontend-contract.test.cjs` — 14 test JavaScript/DOM sintetis; Node.js 18+, termasuk script login/queue eksternal; bukan pengganti browser/visual acceptance |
+| Kontrak frontend | `node --test scripts/frontend-contract.test.cjs` — 22 test JavaScript/DOM sintetis; Node.js 18+, termasuk login/queue/staf dan transport sesi/CSRF/expiry; bukan pengganti browser/visual acceptance |
 | Runner/config migration unit | `go test ./internal/config ./internal/migrate ./cmd/migrate ./migrations -count=1 -timeout=45s` (integration di-skip jika env test tidak diisi) |
 | PostgreSQL migration fresh/upgrade | Isi `ULAUNDRY_TEST_ADMIN_DSN` ke database `postgres` pada **cluster test khusus**, lalu `go test ./internal/migrate -run '^TestPostgresMigrations$' -count=1 -timeout=120s -v`; membuat/menghapus DB test acak, tidak membaca `.env`; lihat [isolasi test](docs/database.md#verifikasi-terarah) |
 | Static analysis HTTP/app | `go vet ./internal/http/... ./internal/app` — lulus hari 08; `go vet ./...` belum menjadi bukti seluruh repository |
