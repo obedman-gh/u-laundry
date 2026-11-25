@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="id"><head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dashboard — ULaundry</title>
+  <link rel="stylesheet" href="/ui/tokens.css"><link rel="stylesheet" href="/ui/ui.css">
+  <script src="/ui/ui.js" defer></script><script src="/dashboard.js" defer></script>
+<link rel="icon" href="/ui/favicon.svg" type="image/svg+xml"></head><body data-staff-app data-page="dashboard"><main>
+  <div class="page-heading"><div><h1>Dashboard</h1><p class="muted">Ringkasan operasional ULaundry.</p></div><button id="refresh-dashboard" type="button" class="secondary">Muat ulang</button></div>
+  <p class="page-description">Penerimaan mengikuti pembayaran hari ini dalam WITA. Piutang dan antrean menunjukkan keadaan saat data dimuat.</p>
+  <div id="dashboard-state" aria-live="polite"></div>
+  <section id="dashboard-content" hidden aria-label="Ringkasan operasional">
+    <p id="updated" class="muted"></p>
+    <div class="summary-grid">
+      <article class="card"><h2>Pesanan hari ini</h2><p id="metric-orders" class="metric">—</p></article>
+      <article class="card"><h2>Penerimaan hari ini</h2><p id="metric-payments" class="metric">—</p></article>
+      <article class="card"><h2>Piutang saat ini</h2><p id="metric-receivable" class="metric">—</p></article>
+      <article class="card"><h2>Shift aktif</h2><p id="metric-shifts" class="metric">—</p></article>
+    </div>
+    <div class="grid">
+      <section class="card" aria-labelledby="queue-heading"><h2 id="queue-heading">Status antrean</h2><ul class="data-list" id="queue-summary"></ul><p><a href="/index.html">Lihat daftar antrean</a></p></section>
+      <section class="card" aria-labelledby="daily-heading"><h2 id="daily-heading">Kas harian</h2><p id="receipts-note"></p><p>Saldo awal dan mutasi laci tidak dihitung sebagai penerimaan pembayaran.</p><a class="button secondary" href="/shifts.html">Buka kas dan shift</a></section>
+    </div>
+  </section>
+  <noscript><p class="ui-alert">Aktifkan JavaScript untuk memuat ringkasan operasional.</p></noscript>
+</main></body></html>

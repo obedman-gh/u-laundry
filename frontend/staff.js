@@ -1,6 +1,6 @@
 (() => {
   const element = id => document.getElementById(id);
-  const message = text => { element('message').textContent = text; };
+  const message = (text, kind = 'info') => { const target = element('message'); if (window.ULaundryUI) window.ULaundryUI.message(target, text, kind); else target.textContent = text; };
   let session, selected, offset = 0, busy = false;
   const limit = 20;
   async function api(path, options = {}) {
@@ -59,7 +59,7 @@
     const payload = {name:element('create-name').value,username:element('create-username').value,role:element('create-role').value,password};
     element('create-password').value = ''; element('create-confirm').value = ''; setBusy(true);
     try { await api('/api/staff',{method:'POST',body:JSON.stringify(payload)}); offset = 0; await load(); message('Akun baru berhasil dibuat.'); }
-    catch (error) { message(error.message); } finally { setBusy(false); }
+    catch (error) { message(error.message, 'error'); } finally { setBusy(false); }
   });
   element('role-form').addEventListener('submit', event => { event.preventDefault(); change('role',{role:element('edit-role').value}); });
   element('active-button').addEventListener('click', () => { if (selected) change('active',{active:!selected.active}); });
@@ -68,8 +68,8 @@
     if (password !== element('edit-confirm').value) { message('Konfirmasi password tidak cocok.'); return; }
     element('edit-password').value = ''; element('edit-confirm').value = ''; change('reset-password',{password});
   });
-  element('reload').addEventListener('click', async () => { if (busy) return; try { await load(); message('Daftar staf diperbarui.'); } catch(error) { message(error.message); } });
-  element('previous').addEventListener('click', async () => { if (busy || offset === 0) return; offset = Math.max(0,offset-limit); try {await load();} catch(error){message(error.message);} });
-  element('next').addEventListener('click', async () => { if (busy || element('next').dataset.last === 'true') return; offset += limit; try {await load();} catch(error){message(error.message);} });
-  (async () => {try {session = await api('/api/session'); if (session.role !== 'owner') {message('Halaman ini hanya dapat digunakan owner.');return;} element('management').hidden = false; await load(); message('');} catch(error){message(error.message);}})();
+  element('reload').addEventListener('click', async () => { if (busy) return; try { await load(); message('Daftar staf diperbarui.'); } catch(error) { message(error.message, 'error'); } });
+  element('previous').addEventListener('click', async () => { if (busy || offset === 0) return; offset = Math.max(0,offset-limit); try {await load();} catch(error){message(error.message, 'error');} });
+  element('next').addEventListener('click', async () => { if (busy || element('next').dataset.last === 'true') return; offset += limit; try {await load();} catch(error){message(error.message, 'error');} });
+  (async () => {try {session = await api('/api/session'); window.ULaundryUI?.setSession(session); if (session.role !== 'owner') {message('Halaman ini hanya dapat digunakan owner.');return;} element('management').hidden = false; await load(); message('');} catch(error){message(error.message, 'error');}})();
 })();

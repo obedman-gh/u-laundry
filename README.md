@@ -2,7 +2,7 @@
 
 ULaundry adalah aplikasi operasional laundry. Stack: Go (`net/http`), PostgreSQL, HTML, CSS, dan JavaScript tanpa framework frontend besar.
 
-Status per 25 November 2026: **audit trail dan halaman owner tahap 17 tersedia, belum layak produksi**. Lihat [arsitektur](docs/architecture.md), [kontrak API dan perubahan kompatibilitas](docs/api.md), [aturan bisnis](docs/business-rules.md), [aturan finansial](docs/finance.md), [laporan operasional](docs/reports.md), [database](docs/database.md), [audit trail](docs/audit.md), [audit baseline](docs/audit-baseline.md), [kriteria penerimaan](docs/acceptance-criteria.md), [backlog](docs/backlog-30-days.md), [laporan hari 17](docs/progress/day-17.md) dan [keamanan autentikasi](docs/security.md).
+Status per 25 November 2026: **fondasi UI responsif tahap 18 tersedia, belum layak produksi**. Lihat [komponen/tokens UI](docs/ui.md), [arsitektur](docs/architecture.md), [kontrak API dan perubahan kompatibilitas](docs/api.md), [aturan bisnis](docs/business-rules.md), [aturan finansial](docs/finance.md), [laporan operasional](docs/reports.md), [database](docs/database.md), [audit trail](docs/audit.md), [audit baseline](docs/audit-baseline.md), [kriteria penerimaan](docs/acceptance-criteria.md), [backlog](docs/backlog-30-days.md), [laporan hari 18](docs/progress/day-18.md) dan [keamanan autentikasi](docs/security.md).
 
 ## Implementasi saat ini
 
@@ -15,13 +15,15 @@ Status per 25 November 2026: **audit trail dan halaman owner tahap 17 tersedia, 
 - Struk staf terautentikasi dan HTML escaping; printer fisik 58/80mm belum diverifikasi. Tracking publik memakai token acak dengan hash tersimpan dan projection minimal.
 - Data laporan buku kas per rentang tanggal (default hari berjalan WITA), hanya owner/admin dan diaudit.
 - Owner membaca riwayat bisnis/keamanan di `/audit.html`, dengan filter tanggal/aksi/pelaku/target/request ID dan pagination. Metadata dibatasi; UPDATE/DELETE/TRUNCATE audit ditolak. Read audit sekarang owner-only, termasuk endpoint objek lama; admin/cashier ditolak.
-- Backend `/api/laporan/dashboard`, `/orders` dan `/ledger`: order/periode, antrean saat ini, piutang, keterlambatan, layanan populer, penerimaan/refund/metode dan shift. Detail berhalaman serta CSV aman satu halaman, khusus owner/admin; UI laporan menyusul Hari 22. Pembayaran/ledger menjadi sumber omzet, terpisah dari mutasi laci.
-- Halaman login, daftar antrean dan `/shifts.html` untuk buka/mutasi/tutup kas sendiri serta ringkasan harian yang dapat dicetak; belum tersedia UI POS/pembayaran/dashboard lengkap.
+- Backend `/api/laporan/dashboard`, `/orders` dan `/ledger`: order/periode, antrean saat ini, piutang, keterlambatan, layanan populer, penerimaan/refund/metode dan shift. Dashboard awal owner/admin tersedia di `/dashboard.html`; filter/detail/CSV UI laporan menyusul Hari 22. Pembayaran/ledger menjadi sumber omzet, terpisah dari mutasi laci.
+- Sembilan halaman memakai tokens warna existing, navigasi desktop/ponsel, form/card/table/list, fokus keyboard dan feedback bersama. Login/antrean memakai script terpisah; `/shifts.html` tetap menyediakan buka/mutasi/tutup kas dan ringkasan cetak. UI POS/pembayaran/laporan lengkap belum tersedia.
 - Migration 000005 menambah sesi/audit autentikasi dan pencabutan saat credential/role/status berubah; tidak mengubah data legacy.
 - `/api/health` memeriksa database (503 bila tidak tersedia); belum ada pemisahan liveness/readiness.
 - Error API seragam `error.code/message/request_id`, request ID server, batas JSON 64 KiB/UTF-8, penolakan field asing/duplikat, 404 API dan 405 dengan Allow; pesan login memahami kontrak baru.
 
 Struktur: `cmd/server/` menyusun pool, runtime clock/ID/token, repository dan use case; `internal/app/` lifecycle; `internal/config/` konfigurasi; `internal/platform/` adapter teknis; `internal/http/` transport; `internal/service/` workflow/authorization/transaksi; `internal/domain/` aturan; `internal/repository/postgres/` SQL. Handler tidak lagi menerima DB, mengatur transaksi atau menyusun SQL. `models/` DTO lama tidak lagi dipakai handler; `frontend/` tetap aset statis. Runner migration tidak otomatis dipanggil server.
+
+Fondasi frontend ada di `frontend/ui/tokens.css`, `ui.css` dan `ui.js`; CSS khusus halaman hanya untuk kebutuhan lokal/print. Seluruh aset lokal tanpa npm/framework/CDN. STATIC_DIR tetap menunjuk folder frontend dan harus menyertakan subfolder ui/; embedding Go belum diaktifkan. Komponen, tokens dan checklist desktop/Android dijelaskan di [docs/ui.md](docs/ui.md).
 
 Use case dipisah menjadi Customers/Catalog/Orders/Payments/Shifts/Tracking/Reports/Auth/Health, dengan clock/ID/token generator yang dapat diganti untuk test. Payload create order menolak harga/total klien; snapshot katalog dan diskon sah dihitung domain. Kegagalan audit menyebabkan rollback perubahan pada use case, bukan keberhasilan parsial. Pilihan kebijakan domain hari 05 tetap perlu ditinjau sebelum aktivasi operasional.
 
@@ -99,7 +101,7 @@ Buka `http://localhost:8080/login.html` sesuai PUBLIC_BASE_URL/origin setelah sc
 | PostgreSQL repository terarah | Isi `ULAUNDRY_TEST_ADMIN_DSN` seperti migration test, lalu `go test ./internal/repository/... -count=1 -timeout=120s -v`; membuat/menghapus DB `ulaundry_repository_test_*`; tidak membaca `.env` |
 | HTTP/middleware/wiring hari 08 | `go test ./internal/http/... ./internal/app -count=1 -timeout=45s` — success/error contract, malformed/oversized/duplicate JSON, query/path, 404/405/HEAD, CORS/JWT, panic redaction, lifecycle; tanpa DB |
 | Autentikasi/session hari 09 | `go test ./internal/security ./internal/http/... ./internal/config ./internal/platform ./internal/app -count=1 -timeout=60s` — claims, cookie/CSRF/logout, rate limit dan startup; integration auth opt-in: lihat docs/security.md |
-| Kompatibilitas pesan login | `node --test scripts/frontend-contract.test.cjs` — 8 test JavaScript/DOM sintetis, Node.js 18+; bukan browser/visual acceptance |
+| Kontrak frontend | `node --test scripts/frontend-contract.test.cjs` — 14 test JavaScript/DOM sintetis; Node.js 18+, termasuk script login/queue eksternal; bukan pengganti browser/visual acceptance |
 | Runner/config migration unit | `go test ./internal/config ./internal/migrate ./cmd/migrate ./migrations -count=1 -timeout=45s` (integration di-skip jika env test tidak diisi) |
 | PostgreSQL migration fresh/upgrade | Isi `ULAUNDRY_TEST_ADMIN_DSN` ke database `postgres` pada **cluster test khusus**, lalu `go test ./internal/migrate -run '^TestPostgresMigrations$' -count=1 -timeout=120s -v`; membuat/menghapus DB test acak, tidak membaca `.env`; lihat [isolasi test](docs/database.md#verifikasi-terarah) |
 | Static analysis HTTP/app | `go vet ./internal/http/... ./internal/app` — lulus hari 08; `go vet ./...` belum menjadi bukti seluruh repository |

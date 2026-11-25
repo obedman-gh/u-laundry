@@ -1,22 +1,230 @@
 <!doctype html>
 <html lang="id">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kas dan shift — ULaundry</title><link rel="stylesheet" href="/shifts.css"><script src="/shifts.js" defer></script></head>
-<body><main>
-<nav class="no-print"><strong>ULaundry</strong><a href="/">Kembali ke antrean</a></nav>
-<h1>Kas dan shift</h1><p id="scope">Memeriksa sesi…</p><p id="message" role="status" aria-live="polite" class="no-print"></p>
-<section id="workspace" hidden>
-<section class="card no-print"><h2>Kas saya</h2><p id="current">Memuat shift aktif…</p>
-<div class="grid">
-<form id="open-form"><h3>Buka kas</h3><label for="opening">Saldo awal tunai (Rp)</label><input id="opening" type="number" min="0" max="9007199254740991" step="1" required><label for="opening-notes">Catatan buka kas</label><input id="opening-notes" maxlength="250"><button type="submit">Buka shift</button></form>
-<form id="cash-form" hidden><h3>Mutasi tunai</h3><label for="direction">Arah mutasi</label><select id="direction"><option value="in">Kas masuk</option><option value="out">Kas keluar</option></select><label for="amount">Nominal (Rp)</label><input id="amount" type="number" min="1" max="9007199254740991" step="1" required><label for="cash-notes">Alasan mutasi</label><input id="cash-notes" maxlength="250" required><button type="submit">Catat mutasi</button></form>
-<form id="close-form" hidden><h3>Tutup kas</h3><p>Hitung uang tunai di laci. Selisih memerlukan catatan. Penutupan tidak dapat diubah.</p><label for="physical">Saldo fisik tunai (Rp)</label><input id="physical" type="number" min="0" max="9007199254740991" step="1" required><label for="closing-notes">Catatan penutupan / alasan selisih</label><input id="closing-notes" maxlength="250"><button type="submit">Tutup shift</button></form>
-</div></section>
-<section class="card" id="daily-report"><div class="report-heading"><h2>Ringkasan harian</h2><form id="date-form" class="no-print"><label for="report-date">Tanggal WITA</label><input id="report-date" type="date" required><button type="submit">Tampilkan</button><button id="print" type="button" class="secondary" disabled>Cetak ringkasan</button></form></div>
-<p id="report-title"></p><p>Transaksi harian memakai tanggal WITA. Setiap baris shift merangkum seluruh sesi sejak dibuka, termasuk bila melewati tengah malam. Saldo awal tidak dihitung sebagai pendapatan.</p>
-<p class="no-print">Pada layar kecil, geser tabel ke samping untuk melihat seluruh kolom.</p><div class="scroll"><table><caption>Transaksi pada tanggal laporan, seluruh shift terkait</caption><thead><tr><th>Metode / mutasi</th><th>Masuk</th><th>Refund / keluar</th><th>Net</th></tr></thead><tbody id="totals"></tbody></table></div>
-<p id="unassigned"></p>
-<div class="scroll"><table><caption>Shift yang aktif pada tanggal laporan</caption><thead><tr><th>Kasir / shift</th><th>Buka / tutup</th><th>Awal</th><th>Sistem tunai</th><th>Fisik</th><th>Selisih</th><th>Penutup / catatan</th><th class="no-print">Transaksi</th></tr></thead><tbody id="shift-list"></tbody></table></div>
-<p id="empty" hidden>Belum ada shift yang aktif pada tanggal ini.</p></section>
-<section class="card no-print" id="entries-panel" hidden><h2>Transaksi shift</h2><p id="entries-title"></p><div class="scroll"><table><thead><tr><th>Waktu WITA</th><th>Metode / arah</th><th>Nominal</th><th>Referensi / catatan</th></tr></thead><tbody id="entries"></tbody></table></div><div class="pager"><button id="previous" type="button" class="secondary">Sebelumnya</button><span id="page-info"></span><button id="next" type="button" class="secondary">Berikutnya</button></div></section>
-<button id="reload" type="button" class="secondary no-print">Muat ulang</button>
-</section></main></body></html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>
+      Kas dan shift — ULaundry
+    </title>
+    <link rel="stylesheet" href="/ui/tokens.css">
+    <link rel="stylesheet" href="/ui/ui.css">
+    <script src="/ui/ui.js" defer></script>
+    <link rel="stylesheet" href="/shifts.css">
+    <script src="/shifts.js" defer></script>
+    <link rel="icon" href="/ui/favicon.svg" type="image/svg+xml">
+  </head>
+  <body data-staff-app data-page="shifts">
+    <main>
+      <h1>
+        Kas dan shift
+      </h1>
+      <p id="scope">
+        Memeriksa sesi…
+      </p>
+      <p data-state="loading" class="ui-alert no-print" id="message" role="status" aria-live="polite"></p>
+      <section id="workspace" hidden>
+        <section class="card no-print">
+          <h2>
+            Kas saya
+          </h2>
+          <p id="current">
+            Memuat shift aktif…
+          </p>
+          <div class="grid">
+            <form id="open-form">
+              <h3>
+                Buka kas
+              </h3>
+              <label for="opening">
+                Saldo awal tunai (Rp)
+              </label>
+              <input id="opening" type="number" min="0" max="9007199254740991" step="1" required>
+              <label for="opening-notes">
+                Catatan buka kas
+              </label>
+              <input id="opening-notes" maxlength="250">
+              <button type="submit">
+                Buka shift
+              </button>
+            </form>
+            <form id="cash-form" hidden>
+              <h3>
+                Mutasi tunai
+              </h3>
+              <label for="direction">
+                Arah mutasi
+              </label>
+              <select id="direction">
+                <option value="in">
+                  Kas masuk
+                </option>
+                <option value="out">
+                  Kas keluar
+                </option>
+              </select>
+              <label for="amount">
+                Nominal (Rp)
+              </label>
+              <input id="amount" type="number" min="1" max="9007199254740991" step="1" required>
+              <label for="cash-notes">
+                Alasan mutasi
+              </label>
+              <input id="cash-notes" maxlength="250" required>
+              <button type="submit">
+                Catat mutasi
+              </button>
+            </form>
+            <form id="close-form" hidden>
+              <h3>
+                Tutup kas
+              </h3>
+              <p>
+                Hitung uang tunai di laci. Selisih memerlukan catatan. Penutupan tidak dapat diubah.
+              </p>
+              <label for="physical">
+                Saldo fisik tunai (Rp)
+              </label>
+              <input id="physical" type="number" min="0" max="9007199254740991" step="1" required>
+              <label for="closing-notes">
+                Catatan penutupan / alasan selisih
+              </label>
+              <input id="closing-notes" maxlength="250">
+              <button type="submit">
+                Tutup shift
+              </button>
+            </form>
+          </div>
+        </section>
+        <section class="card" id="daily-report">
+          <div class="report-heading">
+            <h2>
+              Ringkasan harian
+            </h2>
+            <form id="date-form" class="no-print">
+              <label for="report-date">
+                Tanggal WITA
+              </label>
+              <input id="report-date" type="date" required>
+              <button type="submit">
+                Tampilkan
+              </button>
+              <button id="print" type="button" class="secondary" disabled>
+                Cetak ringkasan
+              </button>
+            </form>
+          </div>
+          <p id="report-title"></p>
+          <p>
+            Transaksi harian memakai tanggal WITA. Setiap baris shift merangkum seluruh sesi sejak dibuka, termasuk bila melewati tengah malam. Saldo awal tidak dihitung sebagai pendapatan.
+          </p>
+          <p class="no-print">
+            Pada layar kecil, geser tabel ke samping untuk melihat seluruh kolom.
+          </p>
+          <div class="scroll">
+            <table>
+              <caption>
+                Transaksi pada tanggal laporan, seluruh shift terkait
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">
+                    Metode / mutasi
+                  </th>
+                  <th scope="col">
+                    Masuk
+                  </th>
+                  <th scope="col">
+                    Refund / keluar
+                  </th>
+                  <th scope="col">
+                    Net
+                  </th>
+                </tr>
+              </thead>
+              <tbody id="totals"></tbody>
+            </table>
+          </div>
+          <p id="unassigned"></p>
+          <div class="scroll">
+            <table>
+              <caption>
+                Shift yang aktif pada tanggal laporan
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">
+                    Kasir / shift
+                  </th>
+                  <th scope="col">
+                    Buka / tutup
+                  </th>
+                  <th scope="col">
+                    Awal
+                  </th>
+                  <th scope="col">
+                    Sistem tunai
+                  </th>
+                  <th scope="col">
+                    Fisik
+                  </th>
+                  <th scope="col">
+                    Selisih
+                  </th>
+                  <th scope="col">
+                    Penutup / catatan
+                  </th>
+                  <th scope="col" class="no-print">
+                    Transaksi
+                  </th>
+                </tr>
+              </thead>
+              <tbody id="shift-list"></tbody>
+            </table>
+          </div>
+          <p id="empty" hidden>
+            Belum ada shift yang aktif pada tanggal ini.
+          </p>
+        </section>
+        <section class="card no-print" id="entries-panel" hidden>
+          <h2>
+            Transaksi shift
+          </h2>
+          <p id="entries-title"></p>
+          <div class="scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">
+                    Waktu WITA
+                  </th>
+                  <th scope="col">
+                    Metode / arah
+                  </th>
+                  <th scope="col">
+                    Nominal
+                  </th>
+                  <th scope="col">
+                    Referensi / catatan
+                  </th>
+                </tr>
+              </thead>
+              <tbody id="entries"></tbody>
+            </table>
+          </div>
+          <div class="pager">
+            <button id="previous" type="button" class="secondary">
+              Sebelumnya
+            </button>
+            <span id="page-info"></span>
+            <button id="next" type="button" class="secondary">
+              Berikutnya
+            </button>
+          </div>
+        </section>
+        <button id="reload" type="button" class="secondary no-print">
+          Muat ulang
+        </button>
+      </section>
+    </main>
+  </body>
+</html>

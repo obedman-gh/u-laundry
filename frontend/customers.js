@@ -2,7 +2,7 @@
   'use strict';
   const el = id => document.getElementById(id);
   let csrf = '', selected = null, offset = 0, orderOffset = 0, sequence = 0, busy = false;
-  const message = text => { el('message').textContent = text; };
+  const message = (text, kind = 'info') => { const target = el('message'); if (window.ULaundryUI) window.ULaundryUI.message(target, text, kind); else target.textContent = text; };
   async function api(path, options = {}) {
     const response = await fetch(path, { credentials: 'same-origin', ...options });
     const data = await response.json().catch(() => ({}));
@@ -45,23 +45,23 @@
       });
       row.appendChild(rotate); row.appendChild(share);
     }
-    if (!orders.length) el('orders').textContent = 'Belum ada pesanan pada halaman ini.';
+    if (!orders.length) { const row = document.createElement('li'); row.textContent = 'Belum ada pesanan pada halaman ini.'; el('orders').appendChild(row); }
     el('orders-previous').disabled = orderOffset === 0; el('orders-next').disabled = orders.length < 20;
   }
   async function choose(id) {
     if (busy) return;
     reset(); const ticket = sequence;
     try {
-      message('Memuat pelanggan…');
+      message('Memuat pelanggan…', 'loading');
       const data = await api(`/api/customers/${encodeURIComponent(id)}`); if (ticket !== sequence) return;
       selected = data;
       for (const key of ['name','contact','address','notes']) el(key).value = data[key] || '';
       el('form-title').textContent = 'Ubah pelanggan'; el('selected').textContent = data.name;
       await history(ticket); if (ticket === sequence) message('Data pelanggan dimuat.');
-    } catch (error) { if (ticket === sequence) message(error.message || 'Tidak terhubung. Silakan coba kembali.'); }
+    } catch (error) { if (ticket === sequence) message(error.message || 'Tidak terhubung. Silakan coba kembali.', 'error'); }
   }
   async function search() {
-    message('Memuat daftar pelanggan…');
+    message('Memuat daftar pelanggan…', 'loading');
     const q = el('search').value.trim();
     const data = await api(`/api/customers?limit=20&offset=${offset}${q ? '&q=' + encodeURIComponent(q) : ''}`);
     el('customers').replaceChildren();
@@ -70,11 +70,11 @@
       button.textContent = customer.name + (customer.contact ? ` — ${customer.contact}` : '');
       button.addEventListener('click', () => choose(customer.customer_id)); row.appendChild(button); el('customers').appendChild(row);
     }
-    if (!data.length) el('customers').textContent = 'Tidak ada pelanggan yang cocok.';
+    if (!data.length) { const row = document.createElement('li'); row.textContent = 'Tidak ada pelanggan yang cocok.'; el('customers').appendChild(row); }
     el('previous').disabled = offset === 0; el('next').disabled = data.length < 20; el('page-info').textContent = `Halaman ${offset / 20 + 1}`;
     message('Daftar pelanggan dimuat.');
   }
-  async function run(fn) { try { await fn(); } catch (error) { message(error.message || 'Tidak terhubung. Silakan coba kembali.'); } }
+  async function run(fn) { try { await fn(); } catch (error) { message(error.message || 'Tidak terhubung. Silakan coba kembali.', 'error'); } }
   el('search-form').addEventListener('submit', event => { event.preventDefault(); offset = 0; run(search); });
   el('previous').addEventListener('click', () => { offset = Math.max(0,offset-20); run(search); });
   el('next').addEventListener('click', () => { offset += 20; run(search); });
@@ -89,8 +89,8 @@
     try {
       const saved = await api(current ? `/api/customers/${encodeURIComponent(current.customer_id)}` : '/api/customers', { method: current ? 'PUT' : 'POST', headers: {'Content-Type':'application/json','X-CSRF-Token':csrf}, body:JSON.stringify(body) });
       reset(); offset = 0; await search(); busy = false; await choose(saved.customer_id); message('Pelanggan tersimpan.');
-    } catch (error) { message(error.message || 'Tidak terhubung. Periksa daftar sebelum mengirim ulang.'); }
+    } catch (error) { message(error.message || 'Tidak terhubung. Periksa daftar sebelum mengirim ulang.', 'error'); }
     finally { busy = false; el('save').disabled = false; }
   });
-  run(async () => { const session = await api('/api/session'); csrf = session.csrf_token; el('management').hidden = false; await search(); });
+  run(async () => { const session = await api('/api/session'); window.ULaundryUI?.setSession(session); csrf = session.csrf_token; el('management').hidden = false; await search(); });
 })();

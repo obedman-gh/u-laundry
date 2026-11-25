@@ -3,13 +3,12 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const html = fs.readFileSync(path.join(__dirname, '../frontend/login.html'), 'utf8');
-const script = html.match(/<script>([\s\S]*?)<\/script>/)[1];
+const script = fs.readFileSync(path.join(__dirname, '../frontend/login.js'), 'utf8');
 
 async function login(response, networkError = false) {
  const elements = new Map();
  const element = id => {
-  if (!elements.has(id)) elements.set(id, { style: {}, value: 'synthetic', textContent: '', addEventListener(type, fn) { this[type] = fn; } });
+  if (!elements.has(id)) elements.set(id, { style: {}, dataset: {}, value: 'synthetic', textContent: '', setAttribute(name,value) { this[name] = value; }, addEventListener(type, fn) { this[type] = fn; } });
   return elements.get(id);
  };
  const stored = new Map([["token", "legacy-token"]]);
@@ -44,16 +43,16 @@ test('network failure restores form without storing credentials', async () => {
  const result = await login({}, true);
  assert.equal(result.button.disabled, false);
  assert.equal(result.stored.size, 0);
- assert.match(result.error.textContent, /Server tidak merespon/);
+ assert.match(result.error.textContent, /Server tidak merespons/);
 });
 
 
 test('cashier loads session and orders with cookies, renders safely, logs out with CSRF', async () => {
  const elements = new Map();
- const make = () => ({style:{},disabled:true,textContent:'',children:[],appendChild(child){this.children.push(child);},replaceChildren(){this.children=[];},addEventListener(type,fn){this[type]=fn;}});
+ const make = () => ({style:{},disabled:true,textContent:'',children:[],setAttribute(name,value){this[name]=value;},appendChild(child){this.children.push(child);},replaceChildren(){this.children=[];},addEventListener(type,fn){this[type]=fn;}});
  const element = id => {if(!elements.has(id)) elements.set(id,make());return elements.get(id);};
  const calls=[];const stored=new Map([['token','legacy-token']]);const window={location:{href:''}};
- const source=fs.readFileSync(path.join(__dirname,'../frontend/index.html'),'utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
+ const source=fs.readFileSync(path.join(__dirname,'../frontend/queue.js'),'utf8');
  const context=vm.createContext({document:{getElementById:element,createElement:make},window,localStorage:{removeItem(k){stored.delete(k);}},fetch:async(url,options)=>{
   calls.push({url,options});assert.equal(options.credentials,'same-origin');assert.equal(options.headers?.Authorization,undefined);
   const body=url==='/api/session'?{csrf_token:'csrf-synthetic'}:url==='/api/pesanan'?[{nama_customer:'<script>synthetic</script>',id_pesanan:'order-1',layanan:'Cuci',total_biaya:1000,status:'received'}]:{pesan:'Sesi telah diakhiri.'};
@@ -170,7 +169,7 @@ test('catalog UI limits management to owner/admin and renders history as safe te
 test('catalog UI creates a service with integer prices and ordered active catalog fields',async()=>{
  const page=await catalogPage(),e=page.element;e('name').value='Selimut';e('unit').value='item';e('price').value='20000';e('minutes').value='2880';e('display-order').value='7';e('active').value='true';
  await e('service-form').submit({preventDefault(){}});
- const request=page.calls.find(c=>c.options.method==='POST');assert.equal(request.url,'/api/services');assert.deepEqual(JSON.parse(request.options.body),{name:'Selimut',unit:'item',unit_price:20000,turnaround_minutes:2880,active:true,display_order:7});assert.match(e('message').textContent,/Pesanan lama tetap memakai snapshot/);
+ const request=page.calls.find(c=>c.options.method==='POST');assert.equal(request.url,'/api/services');assert.deepEqual(JSON.parse(request.options.body),{name:'Selimut',unit:'item',unit_price:20000,turnaround_minutes:2880,active:true,display_order:7});assert.match(e('message').textContent,/Harga pesanan lama tetap/);
 });
 
 test('catalog UI rejects fractional/unsafe money and clears stale edits',async()=>{

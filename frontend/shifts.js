@@ -1,6 +1,6 @@
 (() => {
   const el = id => document.getElementById(id);
-  const message = text => { el('message').textContent = text; };
+  const message = (text, kind = 'info') => { const target = el('message'); if (window.ULaundryUI) window.ULaundryUI.message(target, text, kind); else target.textContent = text; };
   let session, active, busy = false, reportReady = false, selected = '', offset = 0, last = true;
   const pending = new Map(), limit = 20;
   const money = value => {
@@ -11,7 +11,9 @@
   const today = () => new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Makassar',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
   function controls(value) {
     busy = value;
-    document.querySelectorAll('button, input, select').forEach(node => { node.disabled = value; });
+    el('workspace').setAttribute('aria-busy', String(value));
+    document.querySelectorAll('main button, main input, main select').forEach(node => { node.disabled = value; });
+    if (document.getElementById('logout')) document.getElementById('logout').disabled = value;
     el('print').disabled = value || !reportReady;
     el('previous').disabled = value || offset === 0;
     el('next').disabled = value || last;
@@ -66,7 +68,7 @@
   }
   async function inspect(id) {
     if (busy) return; controls(true);selected=id;offset=0;
-    try { await entries();el('entries-panel').scrollIntoView({behavior:'smooth',block:'start'}); } catch(error) { message(error.message); } finally { controls(false); }
+    try { await entries();el('entries-panel').scrollIntoView({behavior:'smooth',block:'start'}); } catch(error) { message(error.message, 'error'); } finally { controls(false); }
   }
   async function command(name,path,body,form) {
     if (busy) return;
@@ -83,20 +85,20 @@
       pending.delete(name);form.reset();reportReady=false;
       message('Transaksi berhasil disimpan.');
       try { await refresh(); } catch(error) { message(`Transaksi berhasil disimpan. Ringkasan belum dapat diperbarui: ${error.message}`); }
-    } catch(error) { if(error.status >= 400 && error.status < 500) pending.delete(name); message(error.message); } finally { controls(false); }
+    } catch(error) { if(error.status >= 400 && error.status < 500) pending.delete(name); message(error.message, 'error'); } finally { controls(false); }
   }
   const amount = id => { const value=Number(el(id).value);if(!Number.isSafeInteger(value)||value<0)throw new Error('Isi nominal rupiah bulat yang valid.');return value; };
-  const submit = (id,fn) => el(id).addEventListener('submit',event => { event.preventDefault();try { fn(); } catch(error) { message(error.message); } });
+  const submit = (id,fn) => el(id).addEventListener('submit',event => { event.preventDefault();try { fn(); } catch(error) { message(error.message, 'error'); } });
   submit('open-form',() => command('open','/api/shifts',{opening:amount('opening'),notes:el('opening-notes').value},el('open-form')));
   submit('cash-form',() => { if(active)command('cash',`/api/shifts/${encodeURIComponent(active.id)}/cash`,{amount:amount('amount'),direction:el('direction').value,notes:el('cash-notes').value},el('cash-form')); });
   submit('close-form',() => { if(active)command('close',`/api/shifts/${encodeURIComponent(active.id)}/close`,{physical:amount('physical'),notes:el('closing-notes').value},el('close-form')); });
-  async function reload() { if(busy)return;controls(true);try{await refresh();message('Ringkasan diperbarui.');}catch(error){message(error.message);}finally{controls(false);} }
+  async function reload() { if(busy)return;controls(true);try{await refresh();message('Ringkasan diperbarui.');}catch(error){message(error.message, 'error');}finally{controls(false);} }
   submit('date-form',reload);el('reload').addEventListener('click',reload);
   el('report-date').addEventListener('change',() => {reportReady=false;el('print').disabled=true;});
   el('print').addEventListener('click',() => {if(reportReady&&!busy)window.print();});
-  el('previous').addEventListener('click',async() => {if(busy||!selected||offset===0)return;controls(true);offset=Math.max(0,offset-limit);try{await entries();}catch(error){message(error.message);}finally{controls(false);}});
-  el('next').addEventListener('click',async() => {if(busy||!selected||last)return;controls(true);offset+=limit;try{await entries();}catch(error){message(error.message);}finally{controls(false);}});
+  el('previous').addEventListener('click',async() => {if(busy||!selected||offset===0)return;controls(true);offset=Math.max(0,offset-limit);try{await entries();}catch(error){message(error.message, 'error');}finally{controls(false);}});
+  el('next').addEventListener('click',async() => {if(busy||!selected||last)return;controls(true);offset+=limit;try{await entries();}catch(error){message(error.message, 'error');}finally{controls(false);}});
   window.addEventListener('offline',() => {reportReady=false;el('print').disabled=true;message('Sedang offline. Transaksi baru memerlukan koneksi; isian belum dikirim otomatis.');});
   window.addEventListener('beforeunload',event => {if(pending.size){event.preventDefault();event.returnValue='';}});
-  (async() => {controls(true);try{session=await api('/api/session');el('scope').textContent=session.role==='cashier'?'Kelola kas sendiri dan lihat ringkasan transaksi Anda.':'Kelola kas sendiri dan lihat ringkasan semua kasir.';el('report-date').value=today();el('workspace').hidden=false;await refresh();message('');}catch(error){message(error.message);}finally{controls(false);}})();
+  (async() => {controls(true);try{session=await api('/api/session');window.ULaundryUI?.setSession(session);el('scope').textContent=session.role==='cashier'?'Kelola kas sendiri dan lihat ringkasan transaksi Anda.':'Kelola kas sendiri dan lihat ringkasan semua kasir.';el('report-date').value=today();el('workspace').hidden=false;await refresh();message('');}catch(error){message(error.message, 'error');}finally{controls(false);}})();
 })();

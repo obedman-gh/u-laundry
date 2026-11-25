@@ -1,0 +1,3 @@
+/* Account management uses the shared forms, cards and tables. */
+#staff-list td:last-child { white-space: nowrap; }
+.scroll table { min-width: 38rem; }

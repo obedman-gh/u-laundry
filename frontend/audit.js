@@ -11,7 +11,7 @@
     const option = document.createElement('option'); option.value = value; option.textContent = text; element('action').appendChild(option);
   }
   let busy = false, offset = 0, more = false, activeQuery = '';
-  const message = text => { element('message').textContent = text; };
+  const message = (text, kind = 'info') => { const target = element('message'); if (window.ULaundryUI) window.ULaundryUI.message(target, text, kind); else target.textContent = text; };
   const dateFormat = new Intl.DateTimeFormat('id-ID', {timeZone:'Asia/Makassar', dateStyle:'medium', timeStyle:'medium'});
   const day = value => new Date(new Date(value).getTime() + 8*3600000).toISOString().slice(0,10);
   const displayTime = value => `${dateFormat.format(new Date(value))} WITA`;
@@ -66,13 +66,13 @@
     } catch (error) { element('page-info').textContent = 'Data belum dimuat.'; message(navigator.onLine ? error.message : 'Perangkat offline. Hubungkan internet lalu pilih Muat ulang.'); }
     finally { setBusy(false); }
   }
-  element('filters').addEventListener('submit', event => { event.preventDefault(); if (busy) return; try { activeQuery = query(); offset = 0; load(); } catch (error) { message(error.message); } });
+  element('filters').addEventListener('submit', event => { event.preventDefault(); if (busy) return; try { activeQuery = query(); offset = 0; load(); } catch (error) { message(error.message, 'error'); } });
   element('clear-filters').addEventListener('click', () => { if (busy) return; element('filters').reset(); offset = 0; activeQuery = query(); load(); });
   element('previous').addEventListener('click', () => { if (!busy && offset>0) { offset = Math.max(0,offset-Number(new URLSearchParams(activeQuery).get('limit'))); load(); } });
   element('next').addEventListener('click', () => { if (!busy && more) { offset += Number(new URLSearchParams(activeQuery).get('limit')); load(); } });
   element('reload').addEventListener('click', () => load());
   (async () => {
-    try { const session = await api('/api/session'); if (session.role !== 'owner') { message('Halaman ini hanya dapat digunakan owner.'); return; } element('audit-panel').hidden = false; activeQuery = query(); await load(); }
-    catch (error) { message(error.message); }
+    try { const session = await api('/api/session'); window.ULaundryUI?.setSession(session); if (session.role !== 'owner') { message('Halaman ini hanya dapat digunakan owner.'); return; } element('audit-panel').hidden = false; activeQuery = query(); await load(); }
+    catch (error) { message(error.message, 'error'); }
   })();
 })();

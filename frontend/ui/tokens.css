@@ -1,0 +1,40 @@
+/* Palette extracted from the existing ULaundry queue, login, shift and audit UI. */
+:root {
+  --color-brand: #007bff;
+  --color-link: #0069d9;
+  --color-action: var(--color-link);
+  --color-action-hover: #0056b3;
+  --color-login: #2563eb;
+  --color-login-hover: #1d4ed8;
+  --color-background: #f4f4f9;
+  --color-background-alt: #f3f4f6;
+  --color-surface: #fff;
+  --color-text: #333;
+  --color-heading: #1f2937;
+  --color-muted: #4b5563;
+  --color-border: #ddd;
+  --color-input-border: #888;
+  --color-danger: #dc2626;
+  --font-body: Arial, sans-serif;
+  --font-login: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  --font-mono: Consolas, monospace;
+  --text-small: .875rem;
+  --text-base: 1rem;
+  --text-section: 1.25rem;
+  --text-title: clamp(1.5rem, 2.5vw, 1.875rem);
+  --space-1: .25rem;
+  --space-2: .5rem;
+  --space-3: .75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+  --radius-small: 4px;
+  --radius-card: 8px;
+  --shadow-card: 0 2px 4px rgb(0 0 0 / .1);
+  --shadow-login: 0 4px 6px rgb(0 0 0 / .1);
+  --control-height: 44px;
+  --sidebar-width: 14rem;
+  --content-width: 1280px;
+}

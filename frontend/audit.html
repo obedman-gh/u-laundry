@@ -1,44 +1,183 @@
 <!doctype html>
 <html lang="id">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Riwayat Audit — ULaundry</title>
-  <link rel="stylesheet" href="/audit.css">
-  <script src="/audit.js" defer></script>
-</head>
-<body>
-<main>
-  <nav aria-label="Navigasi"><strong>ULaundry</strong><a href="/">Kembali ke antrean</a></nav>
-  <h1>Riwayat audit</h1>
-  <p>Hanya owner dapat membaca riwayat. Catatan tidak dapat diubah atau dihapus melalui aplikasi.</p>
-  <p id="message" role="status" aria-live="polite">Memeriksa sesi…</p>
-  <section id="audit-panel" hidden aria-label="Daftar dan filter audit">
-    <form id="filters" class="card">
-      <div class="fields">
-        <label>Dari tanggal (WITA)<input id="from" type="date"></label>
-        <label>Sampai tanggal (WITA)<input id="to" type="date"></label>
-        <label>Aksi<select id="action"><option value="">Semua aksi</option></select></label>
-        <label>Sumber<select id="source"><option value="">Semua sumber</option><option value="business">Operasional</option><option value="security">Keamanan</option></select></label>
-        <label>ID staf pelaku<input id="actor" maxlength="100" autocomplete="off" pattern="[A-Za-z0-9_.-]+"></label>
-        <label>Jenis objek<select id="entity"><option value="">Semua objek</option><option value="staff">Staf</option><option value="service">Layanan</option><option value="order">Pesanan</option><option value="payment">Pembayaran</option><option value="refund">Refund</option><option value="shift">Shift</option><option value="customer">Pelanggan</option><option value="report">Laporan</option><option value="authentication">Autentikasi anonim</option></select></label>
-        <label>ID objek<input id="entity-id" maxlength="100" autocomplete="off" pattern="[A-Za-z0-9_.-]+"></label>
-        <label>Request ID<input id="request" maxlength="100" autocomplete="off" pattern="[A-Za-z0-9_.-]+"></label>
-        <label>Baris per halaman<select id="limit"><option value="20">20</option><option value="50">50</option><option value="100">100</option></select></label>
-      </div>
-      <p id="date-help">Tanggal akhir termasuk hari yang dipilih. Maksimal 366 hari. Default 30 hari terakhir WITA.</p>
-      <button type="submit">Terapkan filter</button>
-      <button type="button" id="clear-filters" class="secondary">Reset filter</button>
-    </form>
-    <div class="card">
-      <p id="period"></p>
-      <p>Pelaku anonim tidak menyimpan username percobaan login. Request ID kosong berarti data historis sebelum korelasi tersedia.</p>
-      <div class="scroll" tabindex="0" role="region" aria-label="Tabel audit, geser untuk melihat semua kolom">
-        <table><caption>Audit terbaru lebih dahulu; waktu ditampilkan dalam WITA</caption><thead><tr><th scope="col">Waktu / sumber</th><th scope="col">Pelaku (ID)</th><th scope="col">Aksi</th><th scope="col">Objek / ID</th><th scope="col">Request ID</th><th scope="col">Metadata</th></tr></thead><tbody id="events"></tbody></table>
-      </div>
-      <div class="pager"><button type="button" id="previous" class="secondary" disabled>Sebelumnya</button><span id="page-info"></span><button type="button" id="next" class="secondary" disabled>Berikutnya</button><button type="button" id="reload">Muat ulang</button></div>
-    </div>
-  </section>
-</main>
-</body>
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>
+      Riwayat Audit — ULaundry
+    </title>
+    <link rel="stylesheet" href="/ui/tokens.css">
+    <link rel="stylesheet" href="/ui/ui.css">
+    <script src="/ui/ui.js" defer></script>
+    <link rel="stylesheet" href="/audit.css">
+    <script src="/audit.js" defer></script>
+    <link rel="icon" href="/ui/favicon.svg" type="image/svg+xml">
+  </head>
+  <body data-staff-app data-page="audit">
+    <main>
+      <h1>
+        Riwayat audit
+      </h1>
+      <p>
+        Hanya pemilik dapat membaca riwayat. Catatan tidak dapat diubah atau dihapus melalui aplikasi.
+      </p>
+      <p data-state="loading" class="ui-alert" id="message" role="status" aria-live="polite">
+        Memeriksa sesi…
+      </p>
+      <section id="audit-panel" hidden aria-label="Daftar dan filter audit">
+        <form id="filters" class="card">
+          <div class="fields">
+            <label>
+              Dari tanggal (WITA)
+              <input id="from" type="date">
+            </label>
+            <label>
+              Sampai tanggal (WITA)
+              <input id="to" type="date">
+            </label>
+            <label>
+              Aksi
+              <select id="action">
+                <option value="">
+                  Semua aksi
+                </option>
+              </select>
+            </label>
+            <label>
+              Sumber
+              <select id="source">
+                <option value="">
+                  Semua sumber
+                </option>
+                <option value="business">
+                  Operasional
+                </option>
+                <option value="security">
+                  Keamanan
+                </option>
+              </select>
+            </label>
+            <label>
+              ID staf pelaku
+              <input id="actor" maxlength="100" autocomplete="off" pattern="[A-Za-z0-9_.-]+">
+            </label>
+            <label>
+              Jenis objek
+              <select id="entity">
+                <option value="">
+                  Semua objek
+                </option>
+                <option value="staff">
+                  Staf
+                </option>
+                <option value="service">
+                  Layanan
+                </option>
+                <option value="order">
+                  Pesanan
+                </option>
+                <option value="payment">
+                  Pembayaran
+                </option>
+                <option value="refund">
+                  Refund
+                </option>
+                <option value="shift">
+                  Shift
+                </option>
+                <option value="customer">
+                  Pelanggan
+                </option>
+                <option value="report">
+                  Laporan
+                </option>
+                <option value="authentication">
+                  Autentikasi anonim
+                </option>
+              </select>
+            </label>
+            <label>
+              ID objek
+              <input id="entity-id" maxlength="100" autocomplete="off" pattern="[A-Za-z0-9_.-]+">
+            </label>
+            <label>
+              Request ID
+              <input id="request" maxlength="100" autocomplete="off" pattern="[A-Za-z0-9_.-]+">
+            </label>
+            <label>
+              Baris per halaman
+              <select id="limit">
+                <option value="20">
+                  20
+                </option>
+                <option value="50">
+                  50
+                </option>
+                <option value="100">
+                  100
+                </option>
+              </select>
+            </label>
+          </div>
+          <p id="date-help">
+            Tanggal akhir termasuk hari yang dipilih. Maksimal 366 hari. Default 30 hari terakhir WITA.
+          </p>
+          <button type="submit">
+            Terapkan filter
+          </button>
+          <button type="button" id="clear-filters" class="secondary">
+            Reset filter
+          </button>
+        </form>
+        <div class="card">
+          <p id="period"></p>
+          <p>
+            Pelaku anonim tidak menyimpan username percobaan login. Request ID kosong berarti data historis sebelum korelasi tersedia.
+          </p>
+          <div class="scroll" tabindex="0" role="region" aria-label="Tabel audit, geser untuk melihat semua kolom">
+            <table>
+              <caption>
+                Audit terbaru lebih dahulu; waktu ditampilkan dalam WITA
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">
+                    Waktu / sumber
+                  </th>
+                  <th scope="col">
+                    Pelaku (ID)
+                  </th>
+                  <th scope="col">
+                    Aksi
+                  </th>
+                  <th scope="col">
+                    Objek / ID
+                  </th>
+                  <th scope="col">
+                    Request ID
+                  </th>
+                  <th scope="col">
+                    Metadata
+                  </th>
+                </tr>
+              </thead>
+              <tbody id="events"></tbody>
+            </table>
+          </div>
+          <div class="pager">
+            <button type="button" id="previous" class="secondary" disabled>
+              Sebelumnya
+            </button>
+            <span id="page-info"></span>
+            <button type="button" id="next" class="secondary" disabled>
+              Berikutnya
+            </button>
+            <button type="button" id="reload">
+              Muat ulang
+            </button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </body>
 </html>

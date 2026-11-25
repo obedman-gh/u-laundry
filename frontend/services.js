@@ -2,7 +2,7 @@
   'use strict';
   const el = id => document.getElementById(id);
   let csrf = '', selected = null, offset = 0, historyOffset = 0, sequence = 0, listSequence = 0, busy = false;
-  const message = text => { el('message').textContent = text; };
+  const message = (text, kind = 'info') => { const target = el('message'); if (window.ULaundryUI) window.ULaundryUI.message(target, text, kind); else target.textContent = text; };
   async function api(path, options = {}) {
     const response = await fetch(path, {credentials:'same-origin', ...options});
     const data = await response.json().catch(() => ({}));
@@ -31,21 +31,21 @@
       row.textContent = `Versi ${record.version}: ${record.name}, Rp ${record.unit_price}/${record.unit}, ${record.turnaround_minutes} menit, ${record.active ? 'aktif' : 'nonaktif'}, urutan ${record.display_order}. ${source} — ${new Date(record.changed_at).toLocaleString('id-ID', {timeZone:'Asia/Makassar'})} WITA`;
       el('history').appendChild(row);
     }
-    if (!records.length) el('history').textContent = 'Belum ada histori pada halaman ini.';
+    if (!records.length) { const row = document.createElement('li'); row.textContent = 'Belum ada histori pada halaman ini.'; el('history').appendChild(row); }
     el('history-previous').disabled = historyOffset === 0; el('history-next').disabled = records.length < 20;
   }
   async function choose(id) {
     if (busy) return; reset(); const ticket = sequence;
     try {
-      message('Memuat layanan…'); const record = await api('/api/services/' + encodeURIComponent(id));
+      message('Memuat layanan…', 'loading'); const record = await api('/api/services/' + encodeURIComponent(id));
       if (ticket !== sequence) return; selected = record;
       for (const [id,key] of [['name','name'],['unit','unit'],['price','unit_price'],['minutes','turnaround_minutes'],['display-order','display_order']]) el(id).value = String(record[key]);
       el('active').value = String(record.active); el('form-title').textContent = 'Ubah layanan'; el('selected').textContent = record.name;
       await history(ticket); if (ticket === sequence) message('Data layanan dimuat.');
-    } catch (error) { if (ticket === sequence) message(error.message || 'Tidak terhubung. Silakan coba kembali.'); }
+    } catch (error) { if (ticket === sequence) message(error.message || 'Tidak terhubung. Silakan coba kembali.', 'error'); }
   }
   async function list() {
-    const ticket = ++listSequence; message('Memuat daftar layanan…');
+    const ticket = ++listSequence; message('Memuat daftar layanan…', 'loading');
     const records = await api(`/api/services?include_inactive=true&limit=20&offset=${offset}`);
     if (ticket !== listSequence) return;
     el('services').replaceChildren();
@@ -54,7 +54,7 @@
       button.textContent = `${record.display_order}. ${record.name} — Rp ${record.unit_price}/${record.unit} — ${record.active ? 'Aktif' : 'Nonaktif'}`;
       button.addEventListener('click', () => choose(record.service_id)); row.appendChild(button); el('services').appendChild(row);
     }
-    if (!records.length) el('services').textContent = 'Belum ada layanan pada halaman ini.';
+    if (!records.length) { const row = document.createElement('li'); row.textContent = 'Belum ada layanan pada halaman ini.'; el('services').appendChild(row); }
     el('previous').disabled = offset === 0; el('next').disabled = records.length < 20; el('page-info').textContent = `Halaman ${offset/20+1}`;
     message('Daftar layanan dimuat.');
   }
@@ -63,7 +63,7 @@
     if (!/^\d+$/.test(raw) || !Number.isSafeInteger(value) || value < min || value > max) throw new Error('Harga, durasi, dan urutan wajib bilangan bulat sesuai batas kolom.');
     return value;
   }
-  async function run(fn) { try { await fn(); } catch (error) { message(error.message || 'Tidak terhubung. Silakan coba kembali.'); } }
+  async function run(fn) { try { await fn(); } catch (error) { message(error.message || 'Tidak terhubung. Silakan coba kembali.', 'error'); } }
   el('new').addEventListener('click', () => { if (!busy) { reset(); message('Form layanan baru.'); } });
   el('reload').addEventListener('click', () => { if (!busy) { reset(); run(list); } });
   el('previous').addEventListener('click', () => { offset = Math.max(0,offset-20); run(list); });
@@ -77,12 +77,12 @@
       const body = {name:el('name').value,unit:el('unit').value,unit_price:integer('price',0,Number.MAX_SAFE_INTEGER),turnaround_minutes:integer('minutes',1,153722867),active:el('active').value === 'true',display_order:integer('display-order',0,1000000)};
       if (current) body.version = current.version;
       const saved = await api(current ? '/api/services/' + encodeURIComponent(current.service_id) : '/api/services', {method:current ? 'PUT' : 'POST',headers:{'Content-Type':'application/json','X-CSRF-Token':csrf},body:JSON.stringify(body)});
-      reset(); offset = 0; await list(); busy = false; await choose(saved.service_id); message('Layanan tersimpan. Pesanan lama tetap memakai snapshot semula.');
-    } catch (error) { message(error.message || 'Tidak terhubung. Periksa daftar sebelum mengirim ulang.'); }
+      reset(); offset = 0; await list(); busy = false; await choose(saved.service_id); message('Layanan tersimpan. Harga pesanan lama tetap.', 'success');
+    } catch (error) { message(error.message || 'Tidak terhubung. Periksa daftar sebelum mengirim ulang.', 'error'); }
     finally { busy = false; el('save').disabled = false; }
   });
   run(async () => {
-    const session = await api('/api/session');
+    const session = await api('/api/session'); window.ULaundryUI?.setSession(session);
     if (session.role !== 'owner' && session.role !== 'admin') { message('Halaman ini hanya untuk owner atau admin.'); return; }
     csrf = session.csrf_token; el('management').hidden = false; await list();
   });

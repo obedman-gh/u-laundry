@@ -1,6 +1,8 @@
-# Arsitektur ULaundry — hari 17
+# Arsitektur ULaundry — hari 18
 
 Go/net/http, PostgreSQL dan frontend sederhana dipertahankan. Service/use case kini aktif pada composition root dan handler. Tidak ada SQL, handle DB, atau pengaturan transaksi dalam handler. Ini belum merupakan bukti kesiapan produksi atau migrasi data operasional.
+
+Frontend Hari 18 memakai `frontend/ui/` untuk tokens/komponen/shell, ditambah CSS/JavaScript per halaman. HTML login/antrean/staf tidak lagi memuat blok inline; URL dan handler bisnis tetap. Presentasi sesi/navigasi menggunakan hasil request session milik halaman tanpa fetch ganda, sedangkan permission tetap di service/API. Dashboard awal membaca endpoint laporan existing. Seluruh aset lokal tanpa build frontend/dependency baru; server masih memakai STATIC_DIR/http.Dir, belum embed.FS. Lihat [ui.md](ui.md) untuk komponen dan batas verifikasi frontend.
 
 ## Arah dependency yang sudah tersedia
 
