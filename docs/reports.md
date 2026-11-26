@@ -1,6 +1,6 @@
-# Dashboard dan laporan — Hari 16
+# Dashboard dan laporan — Hari 16 dan 22
 
-Backend laporan tersedia untuk owner/admin. Halaman dashboard, kontrol export dan print laporan dijadwalkan Hari 22; AC11 belum ditutup seluruhnya. Schema tetap **000011**, tanpa migration atau dependency baru. Sumber data hanya tabel domain, bukan pesanan/keuangan legacy yang belum diimpor.
+Backend laporan tersedia untuk owner/admin; UI dashboard, filter, detail, CSV dan cetak tersedia pada Hari 22. Kasir mendapat dashboard shift sendiri tanpa akses laporan global. Schema saat ini **000012**; tugas UI ini tidak mengubah Go, query, endpoint, migration atau dependency. Sumber data tetap tabel domain, bukan data legacy yang belum diimpor. Bukti backend Hari 16 dan batas acceptance UI–database dipisahkan di bawah.
 
 ## Waktu dan arti angka
 
@@ -62,7 +62,7 @@ Use case memakai `UnitOfWork.View` (PostgreSQL read-only REPEATABLE READ): auth 
 
 Query agregat tetap berjumlah lima, tanpa query per order/shift. Nilai eksternal selalu bind parameter. SUM PostgreSQL dikonversi ke BIGINT dan scan int64; overflow menjadi kegagalan. Indeks existing order created/status/customer, pembayaran per order, order_items PK/service, ledger occurred_at/order/shift dan cash_shifts opened_at tetap dipakai sesuai filter. Agregat keadaan saat ini tetap membaca populasi order/shift. Fixture kecil dan kebutuhan bisnis saat ini tidak membenarkan indeks/migration/benchmark baru; EXPLAIN pada dataset operasional anonim menjadi pekerjaan bila latensi atau pertumbuhan data menunjukkan masalah.
 
-## Verifikasi terarah
+## Verifikasi backend — bukti Hari 16
 
 Jalankan dari root repository, dengan toolchain/cache seperti README. Integration wajib `ULAUNDRY_TEST_ADMIN_DSN` ke database postgres pada **cluster test khusus**, bukan `.env` operasional; helper membuat dan membersihkan DB acak.
 
@@ -74,3 +74,29 @@ go test ./internal/http -run '^TestPostgresReportHTTP$' -count=1 -timeout=60s -v
 ```
 
 Fixture PostgreSQL membuktikan awal inklusif/akhir eksklusif hingga mikrodetik, default WITA, DP lintas tanggal, refund/cancel, diskon, ketepatan estimasi, mutasi/biaya, shift semalam, metode tanpa shift, pagination, role, audit rollback, snapshot terhadap writer lain, cancel context dan overflow agregat. HTTPS test memeriksa sesi nyata, JSON/CSV, angka 4000 terbayar/6000 piutang, penolakan anonymous/cashier dan HEAD. Bukti pelaksanaan dan batas penerimaan di [laporan Hari 16](progress/day-16.md).
+
+## UI Hari 22 — tindakan — hasil
+
+| Tindakan | Hasil |
+|---|---|
+| Dashboard berdasarkan peran | Navigasi Dashboard tersedia untuk owner/admin/cashier. Owner/admin membaca ringkasan global dan dua endpoint detail laporan. Kasir hanya meminta /api/shifts/current: sistem tunai, saldo awal, penerimaan bersih dan mutasi laci shift sendiri, dengan tautan POS/antrean/kas. Tanpa shift, tampil petunjuk buka kas; tidak ada request laporan global atau angka usaha pengganti |
+| Ringkasan pemilik/admin | Delapan cards: order dibuat, penerimaan, refund dan net periode; piutang, terlambat dan shift aktif saat pembacaan; selisih penutupan periode. Tabel metode, layanan populer serta rincian biaya/mutasi/penutupan menjaga arti angka pada kontrak backend. Bagian tanpa shift ditandai sudah termasuk total; nilai layanan sebelum diskon bukan omzet pembayaran. Tidak menambahkan grafik/library |
+| Date filters | Awal/akhir berupa tanggal bisnis WITA. Tanggal akhir inklusif dikonversi ke batas eksklusif pukul 00.00 hari berikutnya; maksimal 366 hari, termasuk leap year. Zona perangkat tidak menentukan periode. Perubahan tanggal langsung menyembunyikan hasil lama dan menonaktifkan cetak/ekspor sampai Tampilkan laporan berhasil. Tombol Hari ini memakai kalender WITA |
+| Detail berhalaman | Dua tabel independen, 20 baris: order created/receivable/overdue dengan filter lima status; ledger posting periode dengan arah, metode, referensi, catatan dan pencatat. has_more dari server menentukan tombol berikutnya. Filter kosong dihilangkan; jenis snapshot tetap seluruh tanggal. Pesanan cancelled tetap memperlihatkan total snapshot tetapi paid/due nol sesuai query, bukan tagihan baru |
+| Metadata/konsistensi | Tiap bagian memuat periode, waktu pembacaan WITA, ID dan halaman/jenis filter. Ringkasan/detail/CSV merupakan pembacaan terpisah; refresh/pagination bukan snapshot gabungan yang dibekukan. Tidak menjumlahkan halaman detail menjadi total laporan. Angka uang wajib integer aman JavaScript; nominal nol, net negatif dan selisih negatif tetap ditampilkan, data tidak valid/overflow ditolak sebelum bagian dibuka |
+| CSV privat | Tombol CSV halaman ini memakai filter/periode/limit/offset halaman yang dimuat melalui transport cookie existing. UI memeriksa status, Content-Type dan metadata X-Report-* sebelum membuat unduhan Blob; tidak membentuk ulang isi CSV dari HTML. Nama berkas hanya jenis/periode/offset, tanpa PII. encoding/csv dan proteksi apostrof formula tetap dari server. Pesan menyatakan unduhan dimulai, waktu/ID ekspor serta halaman berikutnya bila ada |
+| Shift kasir | /shifts.html mempertahankan buka/mutasi/tutup kas sendiri; owner/admin membaca harian seluruh kasir, cashier hanya dirinya. Cards membedakan saldo sesi, penerimaan bersih harian dan mutasi laci. Bagian tanpa shift sudah termasuk total. Metode historis tak dikenal tidak digolongkan sebagai penerimaan teridentifikasi. Baris shift merangkum seluruh sesi yang beririsan tanggal, bukan snapshot akhir hari historis |
+| Retry shift | Satu intent key/body/path dibekukan sebelum POST. Double-submit dikunci; network/timeout/408/5xx/JSON invalid menahan form untuk retry eksplisit yang sama. Penolakan setelah hasil tidak pasti tetap menahan key; konflik definitif meminta muat ulang. Hasil idempotent menampilkan ID tanpa posting ulang; keberhasilan transaksi tidak dibatalkan oleh kegagalan refresh. Tidak ada antrean offline atau penyimpanan PII/key pada browser storage |
+| Cetak | A4 landscape, header tabel berulang, teks/nilai membungkus, navigasi/form/tombol disembunyikan. Print dashboard mencakup ringkasan dan dua halaman detail yang dimuat; print shift mencakup ringkasan tanggal serta halaman transaksi yang dipilih. Metadata dan catatan cakupan tetap terlihat. Ini bukan cetakan seluruh hasil atau thermal receipt |
+| States/aksesibilitas | Loading dan controls lock, empty yang tidak menghapus snapshot piutang, gagal per bagian/retry, offline dan 403/401 ditangani. Tabel lama disembunyikan ketika gagal/ganti filter. Safe DOM memakai createElement/textContent, tabel dapat digeser/fokus keyboard, fokus input dipertahankan sesudah muat ulang. Palet/tokens Hari 18 dipertahankan |
+
+## Verifikasi UI Hari 22 — tindakan — hasil
+
+- Edge headless dengan JSON fixture sintetis — 25 order, penerimaan Rp100.000, refund Rp3.000, net Rp97.000, piutang Rp150.000 dan selisih penutupan −Rp1.000 dirender sesuai respons terkontrol. Net −Rp3.000, nominal nol, cancelled dengan due nol, nilai melewati integer aman dan data kosong diperiksa. Ini bukti tampilan/validasi, bukan rekonsiliasi query/database.
+- Role/date/filter — owner/admin dapat membaca laporan; kasir hanya meminta shift sendiri dan submit/ekspor paksa tidak memanggil laporan global. Scope shift sendiri/semua dan penolakan fixture shift asing diperiksa. Kalender perangkat Los Angeles tetap mengirim 26 November WITA sebagai [25 November 16.00Z,26 November 16.00Z). Periode terbalik/lebih dari 366 hari ditolak; leap year, filter jenis/status, pagination 20/5, label metode historis dan tanggal shift lintas tengah malam lulus.
+- CSV — browser mengunduh byte identik dari handler Go laporan existing dengan use case sintetis. Nama pelanggan =SUM(1,2), kutipan/koma serta keterangan berawalan whitespace/tab/formula dan newline mendapat escaping/proteksi server; timestamp +08:00, metadata halaman dan tidak adanya token diperiksa. Metadata ekspor tidak cocok ditolak tanpa unduhan. Handler digunakan sebagai generator fixture sementara, tanpa mengubah source backend atau menjalankan suite backend.
+- Browser states/transaksi — loading, gagal ringkasan/detail/shift, retry, offline tanpa pengiriman otomatis, forbidden dan expiry lulus tanpa exception JavaScript/console.error. Shift buka/mutasi/tutup, saldo/selisih, double-submit, respons hilang dan replay key/body identik, serta 409 setelah hasil tidak pasti diperiksa.
+- Visual/print — viewport 1280/768/360/390/412px tanpa overflow halaman; screenshot dashboard/cards/detail/shift ditinjau. Keyboard Enter/fokus dan region tabel diperiksa. Preview print menyembunyikan controls serta mempertahankan metadata/halaman transaksi. PDF A4 landscape terbuat: fixture dashboard 5 halaman, shift 3 halaman; dimensi/jumlah halaman diperiksa. Printer/Android fisik belum diuji.
+- Syntax/dokumentasi — sepuluh HTML dan enam belas JavaScript diperiksa untuk syntax, UTF-8, aset lokal, ID unik, tokens dan scope header; diff/tautan laporan diperiksa. Tidak menjalankan test Go, PostgreSQL, contract suite atau full suite karena query/API tidak berubah. Harness, CSV, screenshot dan PDF sintetis berada di cache luar repository; tidak membaca .env atau DB operasional.
+
+Batas pending shift: key/body hanya bertahan di memori tab; reload/penutupan paksa/expiry dapat menghilangkannya. Periksa transaksi sebelum memasukkan ulang. Validasi form/print/role UI tidak menggantikan izin server; acceptance browser → server → PostgreSQL nyata tetap diperlukan sebelum rilis. Bukti dan sisa pekerjaan ada di [laporan Hari 22](progress/day-22.md).

@@ -9,7 +9,7 @@
   const roles = {owner:'Pemilik', admin:'Admin', cashier:'Kasir'};
   const statuses = {received:'Diterima', processing:'Diproses', ready:'Siap diambil', collected:'Sudah diambil', cancelled:'Dibatalkan'};
   const routes = [
-    ['dashboard','/dashboard.html','Dashboard',['owner','admin']],
+    ['dashboard','/dashboard.html','Dashboard',['owner','admin','cashier']],
     ['orders','/index.html','Antrean',['owner','admin','cashier']],
     ['pos','/pos.html','Pesanan baru',['owner','admin','cashier']],
     ['customers','/customers.html','Pelanggan',['owner','admin','cashier']],

@@ -1,26 +1,28 @@
 <!doctype html>
 <html lang="id"><head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Dashboard — ULaundry</title>
-  <link rel="stylesheet" href="/ui/tokens.css"><link rel="stylesheet" href="/ui/ui.css">
-  <script src="/ui/ui.js" defer></script>
-  <script src="/ui/session.js" defer></script><script src="/dashboard.js" defer></script>
-<link rel="icon" href="/ui/favicon.svg" type="image/svg+xml"></head><body data-staff-app data-page="dashboard"><main>
-  <div class="page-heading"><div><h1>Dashboard</h1><p class="muted">Ringkasan operasional ULaundry.</p></div><button id="refresh-dashboard" type="button" class="secondary">Muat ulang</button></div>
-  <p class="page-description">Penerimaan mengikuti pembayaran hari ini dalam WITA. Piutang dan antrean menunjukkan keadaan saat data dimuat.</p>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Dashboard dan laporan — ULaundry</title>
+  <link rel="stylesheet" href="/ui/tokens.css"><link rel="stylesheet" href="/ui/ui.css"><link rel="stylesheet" href="/reports.css">
+  <script src="/ui/ui.js" defer></script><script src="/ui/session.js" defer></script><script src="/reports-model.js" defer></script><script src="/dashboard.js" defer></script>
+  <link rel="icon" href="/ui/favicon.svg" type="image/svg+xml">
+</head><body data-staff-app data-page="dashboard"><main>
+  <div class="page-heading"><div><h1 id="dashboard-title">Dashboard dan laporan</h1><p id="dashboard-scope" class="muted">Memeriksa akses…</p></div><div class="toolbar no-print"><button id="refresh-dashboard" type="button" class="secondary">Muat ulang</button><button id="print-dashboard" type="button" disabled>Cetak tampilan</button></div></div>
   <div id="dashboard-state" aria-live="polite"></div>
-  <section id="dashboard-content" hidden aria-label="Ringkasan operasional">
-    <p id="updated" class="muted"></p>
-    <div class="summary-grid">
-      <article class="card"><h2>Pesanan hari ini</h2><p id="metric-orders" class="metric">—</p></article>
-      <article class="card"><h2>Penerimaan hari ini</h2><p id="metric-payments" class="metric">—</p></article>
-      <article class="card"><h2>Piutang saat ini</h2><p id="metric-receivable" class="metric">—</p></article>
-      <article class="card"><h2>Shift aktif</h2><p id="metric-shifts" class="metric">—</p></article>
-    </div>
-    <div class="grid">
-      <section class="card" aria-labelledby="queue-heading"><h2 id="queue-heading">Status antrean</h2><ul class="data-list" id="queue-summary"></ul><p><a href="/index.html">Lihat daftar antrean</a></p></section>
-      <section class="card" aria-labelledby="daily-heading"><h2 id="daily-heading">Kas harian</h2><p id="receipts-note"></p><p>Saldo awal dan mutasi laci tidak dihitung sebagai penerimaan pembayaran.</p><a class="button secondary" href="/shifts.html">Buka kas dan shift</a></section>
-    </div>
+  <p id="export-message" class="ui-alert no-print" role="status"></p>
+  <section id="cashier-content" hidden aria-label="Ringkasan shift sendiri"><p id="cashier-updated"></p><div id="cashier-cards" class="summary-grid"></div><p>Saldo sistem mencakup saldo awal, pembayaran dan refund tunai serta mutasi laci pada shift Anda. Transfer/QRIS tidak menambah uang tunai di laci.</p><div class="toolbar no-print"><a class="button" href="/pos.html">Pesanan baru</a><a class="button secondary" href="/index.html">Antrean</a><a class="button secondary" href="/shifts.html">Kelola kas dan shift</a></div></section>
+  <section id="owner-workspace" hidden aria-label="Laporan pemilik dan admin">
+    <form id="period-form" class="card no-print"><h2>Periode laporan</h2><div class="fields"><label for="report-from">Tanggal awal WITA<input id="report-from" type="date" required></label><label for="report-to">Tanggal akhir WITA (termasuk tanggal ini)<input id="report-to" type="date" required></label></div><button type="submit">Tampilkan laporan</button><button id="today-report" type="button" class="secondary">Hari ini</button><p>Maksimal 366 hari. Tanggal akhir disertakan seluruhnya sampai sebelum pukul 00.00 hari berikutnya.</p></form>
+    <p id="period-message" class="ui-alert no-print" role="status"></p>
+    <section id="dashboard-content" hidden aria-label="Ringkasan laporan">
+      <h2>Ringkasan operasional dan penerimaan</h2><p id="updated" class="report-meta"></p><p>Pesanan baru dan penerimaan mengikuti periode. Antrean, piutang, keterlambatan dan shift aktif menunjukkan keadaan saat dibaca, dari seluruh tanggal.</p>
+      <div id="owner-cards" class="summary-grid"></div>
+      <div class="grid"><section class="card"><h2>Antrean saat pembacaan</h2><ul id="queue-summary" class="data-list"></ul><a class="no-print" href="/index.html">Buka antrean</a></section><section class="card"><h2>Arus kas dan penutupan dalam periode</h2><dl id="money-summary" class="report-facts"></dl><p>Saldo awal dan mutasi laci dipisahkan dari penerimaan pembayaran. Angka penutupan hanya berasal dari shift yang ditutup dalam periode.</p></section></div>
+      <section class="card"><h2>Penerimaan dan refund per metode</h2><div class="scroll" aria-label="Tabel metode pembayaran"><table><caption>Pembayaran dalam periode, tanpa saldo awal/mutasi/biaya</caption><thead><tr><th scope="col">Metode</th><th scope="col">Penerimaan</th><th scope="col">Refund</th><th scope="col">Bersih</th></tr></thead><tbody id="method-rows"></tbody></table></div><p id="unassigned-summary"></p></section>
+      <section class="card"><h2>Layanan populer</h2><p>Jumlah order dibuat dalam periode selain dibatalkan. Nilai layanan sebelum diskon, bukan omzet pembayaran.</p><div class="scroll" aria-label="Tabel layanan populer"><table><caption>Maksimal sepuluh kelompok snapshot layanan</caption><thead><tr><th scope="col">Layanan</th><th scope="col">Order</th><th scope="col">Kuantitas</th><th scope="col">Nilai sebelum diskon</th></tr></thead><tbody id="popular-rows"></tbody></table></div></section>
+    </section>
+    <section class="card" id="orders-panel" aria-labelledby="orders-heading"><h2 id="orders-heading">Detail pesanan</h2><form id="orders-filter" class="no-print"><div class="fields"><label for="orders-kind">Jenis laporan<select id="orders-kind"><option value="created">Dibuat dalam periode</option><option value="receivable">Piutang saat pembacaan</option><option value="overdue">Terlambat saat pembacaan</option></select></label><label for="orders-status">Status<select id="orders-status"><option value="">Semua status</option><option value="received">Diterima</option><option value="processing">Diproses</option><option value="ready">Siap diambil</option><option value="collected">Sudah diambil</option><option value="cancelled">Dibatalkan</option></select></label></div><button type="submit">Terapkan filter pesanan</button></form><p id="orders-help">Piutang/terlambat memilih kondisi seluruh tanggal pada saat dibaca; periode menjadi metadata.</p><div id="orders-state" class="no-print" aria-live="polite"></div><div id="orders-content" hidden><p id="orders-meta" class="report-meta"></p><div class="scroll" aria-label="Tabel detail pesanan"><table><caption id="orders-caption">Detail pesanan pada halaman ini</caption><thead><tr><th scope="col">ID / pelanggan</th><th scope="col">Status</th><th scope="col">Total</th><th scope="col">Dibayar bersih</th><th scope="col">Sisa</th><th scope="col">Dibuat / estimasi WITA</th></tr></thead><tbody id="orders-rows"></tbody></table></div></div><div class="pager no-print"><button id="orders-prev" type="button" class="secondary" disabled>Sebelumnya</button><span id="orders-page"></span><button id="orders-next" type="button" class="secondary" disabled>Berikutnya</button><button id="orders-export" type="button" disabled>CSV halaman ini</button></div></section>
+    <section class="card" id="ledger-panel" aria-labelledby="ledger-heading"><h2 id="ledger-heading">Detail buku kas</h2><p>Posting pada periode laporan; saldo awal tidak diposting sebagai omzet. Arah masuk/keluar dan relasi transaksi menentukan arti nominal.</p><div id="ledger-state" class="no-print" aria-live="polite"></div><div id="ledger-content" hidden><p id="ledger-meta" class="report-meta"></p><div class="scroll" aria-label="Tabel detail buku kas"><table><caption>Posting pada halaman ini</caption><thead><tr><th scope="col">Waktu WITA</th><th scope="col">Arah / metode</th><th scope="col">Nominal</th><th scope="col">ID / relasi</th><th scope="col">Keterangan / pencatat</th></tr></thead><tbody id="ledger-rows"></tbody></table></div></div><div class="pager no-print"><button id="ledger-prev" type="button" class="secondary" disabled>Sebelumnya</button><span id="ledger-page"></span><button id="ledger-next" type="button" class="secondary" disabled>Berikutnya</button><button id="ledger-export" type="button" disabled>CSV halaman ini</button></div></section>
+    <p class="print-note">Cetakan mencakup ringkasan serta halaman detail yang sedang dimuat, bukan seluruh hasil. CSV juga hanya halaman yang dipilih. Setiap bagian/ekspor dibaca ulang dengan ID dan waktu sendiri; antarhalaman bukan snapshot yang dibekukan.</p>
   </section>
-  <noscript><p class="ui-alert">Aktifkan JavaScript untuk memuat ringkasan operasional.</p></noscript>
+  <noscript><p class="ui-alert">Aktifkan JavaScript untuk memuat dashboard dan laporan.</p></noscript>
 </main></body></html>

@@ -1,6 +1,6 @@
-# UI ULaundry — Hari 18–21
+# UI ULaundry — Hari 18–22
 
-Fondasi bersama memakai HTML semantik, CSS dan JavaScript tanpa framework/build frontend. Identitas ULaundry/Perumahan Viola dan palet existing dipertahankan. Sepuluh halaman memakai tokens bersama: login, antrean, POS, dashboard, pelanggan, layanan, staf, kas/shift, audit dan tracking. Hari 21 menambah search API, saldo/proyeksi detail dan receipt thermal; konfigurasi dan migration tetap, schema 12.
+Fondasi bersama memakai HTML semantik, CSS dan JavaScript tanpa framework/build frontend. Identitas ULaundry/Perumahan Viola dan palet existing dipertahankan. Sepuluh halaman memakai tokens bersama: login, antrean, POS, dashboard, pelanggan, layanan, staf, kas/shift, audit dan tracking. Hari 21 menambah search API, saldo/proyeksi detail dan receipt thermal; Hari 22 melengkapi UI laporan dan shift menggunakan API existing. Konfigurasi/migration tetap, schema 12.
 
 ## Tokens dan asal warna
 
@@ -46,7 +46,9 @@ frontend/
   receipt.js/css     kontrol cetak dan lebar fisik struk privat dari handler Go
   pos.html/js/css    alur pembuatan pesanan dan hasil/tautan struk
   pos-model.js       validasi, konversi gram dan perkiraan katalog integer
-  dashboard.html/js  ringkasan awal owner/admin
+  dashboard.html/js  dashboard role-aware, periode, laporan/detail dan CSV
+  reports-model.js   validasi angka/snapshot dan konversi periode WITA
+  reports.css        layout laporan dan print A4 landscape
   customers.*        pelanggan dan histori
   services.*         katalog
   staff.*            pengelolaan akun
@@ -101,11 +103,24 @@ window.ULaundryUI.state(container, {
 
 Helper hanya membentuk elemen dan textContent, tanpa innerHTML atau template string HTML dari data. Sesi/CSRF hanya di memori seperti alur existing; tidak menambahkan penyimpanan JWT/token di localStorage. Login tetap membersihkan token legacy. Tracking tetap membaca fragmen token tanpa mengirimnya sebagai URL halaman atau mengubah projection publik.
 
-## Batas halaman dashboard
+## Dashboard, shift dan laporan Hari 22 — tindakan — hasil
 
-`/dashboard.html` adalah fondasi ringkasan owner/admin: pesanan hari ini, penerimaan, piutang, shift aktif, status antrean dan net setelah refund. Data berasal dari `/api/laporan/dashboard` existing, tanpa nilai demo/fallback dalam source aplikasi. Sebelum data valid tidak ada angka sementara; kegagalan menyembunyikan angka lama dan menawarkan retry. Bilangan harus aman ditampilkan sebagai integer JavaScript.
+| Tindakan | Hasil |
+|---|---|
+| Peran/navigasi | Dashboard kini tersedia untuk seluruh staf. Kasir membaca shift sendiri dan mendapat pintasan POS/antrean/kas, tanpa request laporan global. Owner/admin mendapat summary, metode/layanan populer dan tabel detail owner sesuai izin backend existing |
+| Periode WITA | Tanggal akhir inklusif → batas eksklusif hari berikutnya, maksimal 366 hari. Zona perangkat tidak memengaruhi periode. Ganti tanggal/filter menyembunyikan bagian lama serta menonaktifkan print/export sampai penerapan berhasil; semua metadata menyebut periode, waktu WITA, ID dan cakupan |
+| Angka/status | Uang memakai formatter IDR bersama dengan pemeriksaan integer aman, termasuk Rp0, net/selisih negatif. Snapshot cancelled pada laporan punya due nol sesuai query. Metadata/nilai tidak valid atau overflow menyembunyikan bagian; tidak ada angka fallback. Cards membedakan periode dan keadaan saat pembacaan, serta saldo awal/mutasi/biaya/penerimaan |
+| Tabel/CSV | Dua tabel owner berhalaman 20 baris: order dengan jenis/status dan ledger dengan arah/metode/relasi/catatan. CSV hanya halaman yang dimuat, memakai endpoint existing, cookie sesi, filter yang sama dan pemeriksaan Content-Type/X-Report-*. Byte hasil server dipertahankan termasuk proteksi formula; tidak menggunakan innerHTML atau ekspor dari HTML |
+| Shift/transactions | Summary cards untuk kas sendiri dan laporan harian, izin own/all, metode historis dan bagian tanpa shift jelas. Detail shift dapat dipaginasi dan dicetak. Buka/mutasi/tutup memakai satu key/body tetap saat hasil tidak pasti; form/navigasi terkunci, retry eksplisit dan hasil idempotent ditampilkan. Reload paksa menghilangkan key memori; tidak ada antrean offline |
+| Print/mobile | A4 landscape memakai CSS lokal dan tokens lama; controls/shell disembunyikan, header tabel berulang, long text membungkus. Cakupan halaman tercetak jelas, bukan seluruh hasil. Region tabel dapat digeser dengan sentuh/keyboard tanpa overflow halaman; fokus input dipertahankan. Grafik/library tambahan tidak diperlukan |
+| Batas data | Ringkasan, setiap tabel, CSV dan shift adalah pembacaan terpisah; metadata tidak menyiratkan satu snapshot gabungan. Kasir tidak dapat melihat laporan global melalui UI; server tetap otoritas role/izin. Detail dan transaksi finansial tidak disimpan di browser storage |
 
-Kasir yang membuka URL tersebut mendapat petunjuk menuju alur operasional tanpa request laporan sensitif. Halaman tidak melakukan polling; refresh membaca laporan dan mengikuti audit server existing. Filter periode, detail laporan, CSV serta penerimaan UI finansial lengkap tetap Hari 22. UI login/sesi/staf diverifikasi pada Hari 19 dan pembuatan order pada Hari 20; antrean/progres/receipt tersedia pada Hari 21. Verifikasi browser mock belum menutup AC15 atau kesiapan produksi seluruh aplikasi.
+## Verifikasi Hari 22 — tindakan — hasil
+
+- Focused Edge headless — fixture uang Rp100.000/Rp3.000/Rp97.000, angka nol/negatif/overflow, cancelled/due nol, role owner/admin/cashier, WITA pada perangkat Los Angeles, filter/pagination, loading/empty/error/retry/offline, 403/401 dan lifecycle transaksi shift lulus. Tidak ada exception JavaScript atau console.error.
+- CSV — unduhan browser identik dengan fixture dari handler Go existing; formula/koma/kutipan/tab/newline, metadata dan offset diperiksa. Respons metadata salah ditolak. Tidak mengubah query/API atau menjalankan suite Go/PostgreSQL/frontend contract; browser memverifikasi perubahan UI.
+- Visual/print — screenshot desktop/ponsel ditinjau; viewport 1280/768/360/390/412px tanpa overflow, Enter/fokus dan region tabel diperiksa. Print preview A4 menyembunyikan controls dan menampilkan metadata/cakupan halaman; PDF fixture dashboard 5 halaman dan shift 3 halaman diperiksa dimensi/jumlahnya. Android/printer fisik dan acceptance UI–database belum dibuktikan.
+- Rincian kontrak, tindakan/hasil dan batas fixture ada di [reports.md](reports.md#ui-hari-22--tindakan--hasil) serta [laporan Hari 22](progress/day-22.md). Bukti Hari 18–21 di bawah tetap merupakan catatan historis; guard dashboard kasir lama digantikan dashboard shift sendiri pada Hari 22.
 
 ## Autentikasi dan pengelolaan akun — tindakan — hasil
 
@@ -187,7 +202,7 @@ Periksa halaman pada desktop 1280px, tablet 768px dan viewport Android 360/390/4
 - Palet/wordmark sesuai baseline; halaman tidak overflow, tabel dapat digeser dengan keyboard/sentuh, label dan kontrol terbaca.
 - Menu ponsel, aria-current, Escape/fokus, skip link/Tab, toggle kata sandi dengan Enter dan target 44px.
 - Loading, kosong, gagal/retry, toast/tutup, koneksi offline/online; jangan menampilkan angka/dashboard lama saat gagal.
-- Role menu, guard dashboard kasir dan keluar dengan cookie/CSRF; ini pemeriksaan UI, bukan pengganti tes authorization server.
+- Role menu, dashboard shift sendiri untuk kasir dan keluar dengan cookie/CSRF; ini pemeriksaan UI, bukan pengganti tes authorization server.
 - Print media kas/shift menyembunyikan shell/kontrol; reduced-motion mematikan animasi spinner CSS.
 - Console/JavaScript dan resource error pada alur normal; respons API gagal yang sengaja disimulasikan dibedakan dari exception UI.
 
