@@ -7,6 +7,7 @@ import (
 	"ulaundry/internal/http/middleware"
 	"ulaundry/internal/http/response"
 	"ulaundry/internal/service"
+	"ulaundry/internal/telemetry"
 )
 
 func paymentView(p domain.Payment, replayed bool) dto.PaymentResponse {
@@ -36,6 +37,8 @@ func (h *Handler) RefundPayment(w http.ResponseWriter, r *http.Request) {
 	status := http.StatusCreated
 	if result.Replayed {
 		status = http.StatusOK
+	} else {
+		h.use.Metrics.Business(telemetry.RefundRecorded)
 	}
 	response.JSON(w, r, status, refundView(result.Refund, result.Replayed))
 }

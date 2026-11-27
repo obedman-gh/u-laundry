@@ -4,11 +4,14 @@ package handler
 
 import (
 	"context"
+	"log/slog"
+	"time"
 
 	"ulaundry/internal/domain"
 	"ulaundry/internal/repository"
 	"ulaundry/internal/security"
 	"ulaundry/internal/service"
+	"ulaundry/internal/telemetry"
 )
 
 type CustomerUseCase interface {
@@ -51,6 +54,9 @@ type AuthUseCase interface {
 	Login(context.Context, string, string) (service.LoginResult, error)
 }
 type HealthUseCase interface{ Check(context.Context) error }
+type OperationsUseCase interface {
+	Authorize(context.Context, string) error
+}
 type ShiftUseCase interface {
 	Open(context.Context, string, service.ShiftOpenInput) (service.ShiftView, error)
 	Close(context.Context, string, service.ShiftCloseInput) (service.ShiftView, error)
@@ -64,18 +70,24 @@ type AuditUseCase interface {
 	List(context.Context, string, repository.AuditFilter) (service.AuditHistory, error)
 }
 type Dependencies struct {
-	Audit     AuditUseCase
-	Shifts    ShiftUseCase
-	Staff     StaffUseCase
-	Sessions  *security.Manager
-	Customers CustomerUseCase
-	Catalog   CatalogUseCase
-	Orders    OrderUseCase
-	Payments  PaymentUseCase
-	Tracking  TrackingUseCase
-	Reports   ReportUseCase
-	Auth      AuthUseCase
-	Health    HealthUseCase
+	Audit            AuditUseCase
+	Shifts           ShiftUseCase
+	Staff            StaffUseCase
+	Sessions         *security.Manager
+	Customers        CustomerUseCase
+	Catalog          CatalogUseCase
+	Orders           OrderUseCase
+	Payments         PaymentUseCase
+	Tracking         TrackingUseCase
+	Reports          ReportUseCase
+	Auth             AuthUseCase
+	Health           HealthUseCase
+	Operations       OperationsUseCase
+	Logger           *slog.Logger
+	Metrics          *telemetry.Registry
+	PoolStats        func() telemetry.Pool
+	ReadinessTimeout time.Duration
+	Draining         func() bool
 }
 type Handler struct{ use Dependencies }
 

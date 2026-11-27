@@ -21,6 +21,7 @@ import (
 	"ulaundry/internal/repository"
 	"ulaundry/internal/security"
 	"ulaundry/internal/service"
+	"ulaundry/internal/telemetry"
 )
 
 const MaxBodyBytes = middleware.MaxBodyBytes
@@ -92,6 +93,7 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	var boundary *dto.ValidationError
 	switch {
 	case errors.Is(err, repository.ErrInvalidData), errors.Is(err, repository.ErrConstraint):
+		telemetry.SetError(r.Context(), "data_integrity")
 	case errors.Is(err, repository.ErrUnavailable):
 		status, code, message = 503, "service_unavailable", "Layanan penyimpanan sementara tidak tersedia."
 	case errors.Is(err, service.ErrAuthentication), errors.Is(err, security.ErrUnauthorized):
@@ -99,6 +101,7 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	case errors.Is(err, context.DeadlineExceeded):
 		status, code, message = 504, "deadline_exceeded", "Waktu permintaan telah habis."
 	case errors.Is(err, context.Canceled):
+		telemetry.SetError(r.Context(), "canceled")
 		status, code, message = 408, "request_canceled", "Permintaan telah dibatalkan."
 	case errors.As(err, &boundary):
 		status, code, message = 400, "validation_failed", boundary.Message

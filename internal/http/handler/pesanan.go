@@ -14,6 +14,7 @@ import (
 	"ulaundry/internal/http/response"
 	"ulaundry/internal/repository"
 	"ulaundry/internal/service"
+	"ulaundry/internal/telemetry"
 )
 
 func orderView(record repository.OrderRecord) dto.OrderResponse {
@@ -108,6 +109,8 @@ func (h *Handler) BikinPesananBaru(w http.ResponseWriter, r *http.Request) {
 	status := http.StatusCreated
 	if created.Replayed {
 		status = http.StatusOK
+	} else {
+		h.use.Metrics.Business(telemetry.OrderCreated)
 	}
 	response.JSON(w, r, status, dto.CreatedOrderResponse{Order: orderView(repository.OrderRecord{Order: created.Order, Version: created.Version, AppliedVersion: 1, Replayed: created.Replayed}), TrackingToken: created.TrackingToken, TrackingExpiresAt: nullableTime(created.TrackingExpiresAt), Replayed: created.Replayed})
 }
@@ -207,6 +210,8 @@ func (h *Handler) RecordPayment(w http.ResponseWriter, r *http.Request) {
 	status := http.StatusCreated
 	if result.Replayed {
 		status = http.StatusOK
+	} else {
+		h.use.Metrics.Business(telemetry.PaymentRecorded)
 	}
 	response.JSON(w, r, status, paymentView(result.Payment, result.Replayed))
 }

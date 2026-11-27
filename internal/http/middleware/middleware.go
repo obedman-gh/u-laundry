@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"log/slog"
 	"net"
 	"net/http"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 
 	"errors"
 	"ulaundry/internal/security"
+	"ulaundry/internal/telemetry"
 )
 
 type actorKey struct{}
@@ -21,6 +23,8 @@ type Middleware struct {
 	sessions        *security.Manager
 	trustedOrigins  map[string]bool
 	trackingLimiter *security.Limiter
+	logger          *slog.Logger
+	metrics         *telemetry.Registry
 }
 
 func New(trustedOrigins []string, sessions *security.Manager) *Middleware {

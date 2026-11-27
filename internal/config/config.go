@@ -41,6 +41,7 @@ type HTTP struct {
 	WriteTimeout      time.Duration
 	IdleTimeout       time.Duration
 	ShutdownTimeout   time.Duration
+	ReadinessTimeout  time.Duration
 }
 
 type Mode string
@@ -104,6 +105,7 @@ func Parse(getenv func(string) string) (Config, error) {
 			WriteTimeout:      p.duration("HTTP_WRITE_TIMEOUT", 10*time.Second),
 			IdleTimeout:       p.duration("HTTP_IDLE_TIMEOUT", 15*time.Second),
 			ShutdownTimeout:   p.duration("HTTP_SHUTDOWN_TIMEOUT", 5*time.Second),
+			ReadinessTimeout:  p.duration("HEALTH_READINESS_TIMEOUT", 2*time.Second),
 		},
 		JWTSecret:     getenv("JWT_SECRET"),
 		Cookie:        Cookie{Secret: getenv("COOKIE_SECRET"), SameSite: p.text("COOKIE_SAME_SITE", "lax")},
@@ -151,6 +153,9 @@ func Parse(getenv func(string) string) (Config, error) {
 	}
 	if c.HTTP.ReadHeaderTimeout > c.HTTP.ReadTimeout {
 		p.fail("HTTP_READ_HEADER_TIMEOUT", "tidak boleh melebihi HTTP_READ_TIMEOUT")
+	}
+	if c.HTTP.ReadinessTimeout >= c.HTTP.WriteTimeout {
+		p.fail("HEALTH_READINESS_TIMEOUT", "harus lebih pendek dari HTTP_WRITE_TIMEOUT")
 	}
 	if c.HTTP.StaticDir == "" {
 		p.fail("STATIC_DIR", "tidak boleh kosong")

@@ -69,11 +69,7 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, r, 200, map[string]string{"pesan": "Sesi telah diakhiri."})
 }
 func (h *Handler) HealthCheck(w http.ResponseWriter, r *http.Request) {
-	if err := h.use.Health.Check(r.Context()); err != nil {
-		response.Fail(w, r, 503, "health_unavailable", "Pemeriksaan database sementara tidak tersedia.")
-		return
-	}
-	response.JSON(w, r, http.StatusOK, dto.HealthResponse{Status: "ok", Version: "1.0.0", Database: "connected"})
+	h.Readiness(w, r)
 }
 func (h *Handler) CreateCustomer(w http.ResponseWriter, r *http.Request) {
 	var body dto.CustomerRequest

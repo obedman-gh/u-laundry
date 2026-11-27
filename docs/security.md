@@ -4,6 +4,8 @@ Diperbarui 27 November 2026, Asia/Makassar. Berlaku untuk server domain Go/Postg
 
 ## Review terarah Hari 24
 
+Perkembangan Hari 25: request/lifecycle kini memakai log JSON berlevel dengan request ID server, route template, method/status/duration dan klasifikasi aman; tidak mencatat URL/query/header/body, token atau identitas. `/api/health/live` publik tanpa DB, `/api/health/ready` dan alias `/api/health` memakai ping ber-timeout/draining. `/api/ops/metrics` privat hanya owner aktif dengan permission manage_configuration existing. Snapshot metrics bukan ledger/audit. Kebijakan panic/error/transport redaction, operasi dan batas bukti terbaru ada di [runbook.md](runbook.md) dan [laporan Hari 25](progress/day-25.md).
+
 Scope: code review dan test lokal/fixture sintetis untuk auth, authorization, CORS, cookie/CSRF, header, input/limit, XSS, SQL injection, IDOR, tracking, struk, limiter, log, secret, dependency dan error leakage. Tidak ada penetration test server publik, performance test, perubahan DB atau deployment. Bagian Hari 09–17 di bawah adalah konteks kontrol existing; bukti aktual Hari 24 ada pada [laporan](progress/day-24.md).
 
 ### Temuan dan hasil

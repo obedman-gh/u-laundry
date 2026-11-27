@@ -1,9 +1,11 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -15,6 +17,7 @@ import (
 
 	"ulaundry/internal/config"
 	"ulaundry/internal/http/handler"
+	"ulaundry/internal/telemetry"
 )
 
 type lifecycleDB struct {
@@ -108,7 +111,9 @@ func TestServeShutdown(t *testing.T) {
 				grace = 20 * time.Millisecond
 			}
 			db := &lifecycleDB{}
-			a := New(config.Config{HTTP: config.HTTP{ShutdownTimeout: grace}}, db, handler.Dependencies{Health: db})
+			var logs bytes.Buffer
+			a := New(config.Config{HTTP: config.HTTP{ShutdownTimeout: grace}}, db, handler.Dependencies{Health: db, Logger: telemetry.NewLogger(&logs, slog.LevelInfo)})
+			probe := a.server.Handler
 			started, release, finished := make(chan struct{}), make(chan struct{}), make(chan struct{})
 			var releaseOnce sync.Once
 			releaseRequest := func() { releaseOnce.Do(func() { close(release) }) }
@@ -146,6 +151,11 @@ func TestServeShutdown(t *testing.T) {
 			awaitSignal(t, started)
 			cancel()
 			awaitSignal(t, observed.closed)
+			readiness := httptest.NewRecorder()
+			probe.ServeHTTP(readiness, httptest.NewRequest("GET", "/api/health/ready", nil))
+			if readiness.Code != 503 || db.pingCount.Load() != 0 {
+				t.Fatal("readiness must reject draining without touching DB")
+			}
 			if !timeout {
 				if count := db.closeCount.Load(); count != 0 {
 					t.Fatal("database closed before in-flight request finished")
@@ -177,6 +187,12 @@ func TestServeShutdown(t *testing.T) {
 			case <-time.After(3 * time.Second):
 				t.Fatal("HTTP client did not finish")
 			}
+			if !strings.Contains(logs.String(), `"msg":"server.stopped"`) || strings.Contains(logs.String(), "synthetic") {
+				t.Fatal("missing or unsafe lifecycle log", logs.String())
+			}
+			if timeout && !strings.Contains(logs.String(), `"msg":"server.shutdown_forced"`) {
+				t.Fatal("forced shutdown not logged")
+			}
 		})
 	}
 }
@@ -193,10 +209,22 @@ func awaitSignal(t *testing.T, signal <-chan struct{}) {
 func TestRunClosesDatabaseOnListenFailure(t *testing.T) {
 	closeErr := errors.New("synthetic close failure")
 	db := &lifecycleDB{closeErr: closeErr}
-	a := New(config.Config{HTTP: config.HTTP{Address: "127.0.0.1:invalid-port"}}, db, handler.Dependencies{Health: db})
+	var logs bytes.Buffer
+	a := New(config.Config{HTTP: config.HTTP{Address: "127.0.0.1:invalid-port"}}, db, handler.Dependencies{Health: db, Logger: telemetry.NewLogger(&logs, slog.LevelInfo)})
 	err := a.Run(context.Background())
 	if !errors.Is(err, closeErr) || db.closeCount.Load() != 1 {
 		t.Fatalf("listener failure lost cleanup error or DB close: %v", err)
+	}
+	if strings.Contains(logs.String(), "synthetic") || strings.Contains(logs.String(), "invalid-port") || !strings.Contains(logs.String(), `"error_class":"listener"`) || !strings.Contains(logs.String(), `"error_class":"database"`) {
+		t.Fatal("lifecycle error leakage", logs.String())
+	}
+}
+
+func TestConfiguredHTTPTimeouts(t *testing.T) {
+	h := config.HTTP{ReadHeaderTimeout: time.Second, ReadTimeout: 3 * time.Second, WriteTimeout: 4 * time.Second, IdleTimeout: 5 * time.Second, ShutdownTimeout: 6 * time.Second, ReadinessTimeout: 2 * time.Second}
+	a := New(config.Config{HTTP: h}, &lifecycleDB{}, handler.Dependencies{})
+	if a.server.ReadHeaderTimeout != h.ReadHeaderTimeout || a.server.ReadTimeout != h.ReadTimeout || a.server.WriteTimeout != h.WriteTimeout || a.server.IdleTimeout != h.IdleTimeout || a.shutdownTimeout != h.ShutdownTimeout {
+		t.Fatal("configured timeout lost")
 	}
 }
 

@@ -2,7 +2,7 @@
 
 ULaundry adalah aplikasi operasional laundry. Stack: Go (`net/http`), PostgreSQL, HTML, CSS, dan JavaScript tanpa framework frontend besar.
 
-Status per 27 November 2026: **PWA dasar tahap 23 tersedia, belum layak produksi**. Lihat [PWA, cache dan recovery](docs/pwa.md), [komponen/tokens UI](docs/ui.md), [arsitektur](docs/architecture.md), [kontrak API dan perubahan kompatibilitas](docs/api.md), [aturan bisnis](docs/business-rules.md), [aturan finansial](docs/finance.md), [laporan operasional](docs/reports.md), [database](docs/database.md), [audit trail](docs/audit.md), [audit baseline](docs/audit-baseline.md), [kriteria penerimaan](docs/acceptance-criteria.md), [backlog](docs/backlog-30-days.md), [laporan hari 23](docs/progress/day-23.md) dan [keamanan autentikasi](docs/security.md).
+Status per 27 November 2026: **observability dasar tahap 25 tersedia, belum layak produksi**. Lihat [runbook operasi](docs/runbook.md), [laporan hari 25](docs/progress/day-25.md), [PWA, cache dan recovery](docs/pwa.md), [komponen/tokens UI](docs/ui.md), [arsitektur](docs/architecture.md), [kontrak API dan perubahan kompatibilitas](docs/api.md), [aturan bisnis](docs/business-rules.md), [aturan finansial](docs/finance.md), [laporan operasional](docs/reports.md), [database](docs/database.md), [audit trail](docs/audit.md), [audit baseline](docs/audit-baseline.md), [kriteria penerimaan](docs/acceptance-criteria.md), [backlog](docs/backlog-30-days.md) dan [keamanan autentikasi](docs/security.md).
 
 ## Implementasi saat ini
 
@@ -22,7 +22,7 @@ Status per 27 November 2026: **PWA dasar tahap 23 tersedia, belum layak produksi
 - Backend `/api/laporan/dashboard`, `/orders` dan `/ledger`: order/periode, antrean saat ini, piutang, keterlambatan, layanan populer, penerimaan/refund/metode dan shift. Dashboard owner/admin di `/dashboard.html` menyediakan periode WITA, cards, tabel detail berhalaman, CSV per halaman dan print A4. Kasir mendapat dashboard shift sendiri tanpa akses laporan global. Pembayaran/ledger menjadi sumber omzet, terpisah dari mutasi laci.
 - Sepuluh halaman memakai tokens warna existing, navigasi desktop/ponsel, form/card/table/list, fokus keyboard dan feedback bersama. Login/antrean memakai script terpisah; `/shifts.html` tetap menyediakan buka/mutasi/tutup kas dan ringkasan cetak. Antrean/receipt, UI pembayaran dan laporan/shift tersedia; print/export menyebut cakupan halaman.
 - Migration 000005 menambah sesi/audit autentikasi dan pencabutan saat credential/role/status berubah; tidak mengubah data legacy.
-- `/api/health` memeriksa database (503 bila tidak tersedia); belum ada pemisahan liveness/readiness.
+- `/api/health/live` memeriksa proses tanpa DB; `/api/health/ready` memeriksa DB dengan timeout dan menolak saat draining. `/api/health` tetap alias readiness yang kompatibel. Log JSON per request memuat ID server, route template, method/status/duration/error class; metrics request/pool/counter bisnis tersedia untuk owner aktif melalui `/api/ops/metrics`.
 - Error API seragam `error.code/message/request_id`, request ID server, batas JSON 64 KiB/UTF-8, penolakan field asing/duplikat, 404 API dan 405 dengan Allow; pesan login memahami kontrak baru.
 
 Struktur: `cmd/server/` menyusun pool, runtime clock/ID/token, repository dan use case; `internal/app/` lifecycle; `internal/config/` konfigurasi; `internal/platform/` adapter teknis; `internal/http/` transport; `internal/service/` workflow/authorization/transaksi; `internal/domain/` aturan; `internal/repository/postgres/` SQL. Handler tidak lagi menerima DB, mengatur transaksi atau menyusun SQL. `models/` DTO lama tidak lagi dipakai handler; `frontend/` tetap aset statis. Runner migration tidak otomatis dipanggil server.
@@ -56,14 +56,14 @@ Semua variabel beserta default/kebijakan ada di [.env.example](.env.example):
 | Area | Setting dan kebijakan |
 |---|---|
 | Mode | `APP_ENV=development/test/production`; default development |
-| HTTP | `SERVER_ADDRESS=127.0.0.1:8080`, `STATIC_DIR=./frontend`; read-header 5s, read/write 10s, idle 15s, shutdown 5s; durasi positif, read-header ≤ read |
+| HTTP | `SERVER_ADDRESS=127.0.0.1:8080`, `STATIC_DIR=./frontend`; read-header 5s, read/write 10s, idle 15s, shutdown 5s; durasi positif, read-header ≤ read; `HEALTH_READINESS_TIMEOUT=2s` harus < write timeout |
 | Database | Default development host 127.0.0.1, port 5432, user/database ulaundry, SSL disable; contoh memakai nama DB ulaundry_dev |
 | Pool | `DB_MAX_OPEN_CONNS=10`, `DB_MAX_IDLE_CONNS=5`, `DB_CONN_MAX_LIFETIME=30m`; max-open ≥ 1, idle 0..max-open |
 | DB startup | `DB_CONNECT_TIMEOUT=5s`, `DB_PING_TIMEOUT=5s`; positif, connect ≤ ping; pool ditutup saat ping gagal/cancel atau saat app selesai |
 | Origin | `PUBLIC_BASE_URL=http://localhost:8080`; `TRUSTED_ORIGINS` dipisah koma, default hanya origin public URL; wajib mencakup public URL, tanpa wildcard/user/path/query/fragment |
 | Kompatibilitas origin | `ALLOWED_ORIGIN` masih alias satu origin; ditolak jika digabung dengan TRUSTED_ORIGINS |
 | Cookie | Secret ≥ 32 byte, `COOKIE_SAME_SITE=lax/strict/none`, `COOKIE_SECURE=false` untuk development; none memerlukan Secure |
-| Logging | `LOG_LEVEL=debug/info/warn/error`; startup/shutdown JSON memakai level ini; request logging lengkap masih backlog |
+| Logging | `LOG_LEVEL=debug/info/warn/error`; lifecycle/request JSON, route template tanpa URL/query/header/body/PII. Info sukses, warn 4xx, error 5xx/panic/write failure. Lihat [runbook](docs/runbook.md) untuk klasifikasi, metrics dan retensi |
 
 **Production wajib** mengatur `APP_ENV=production`, public URL HTTPS eksplisit, seluruh trusted origin HTTPS, JWT/cookie secret berbeda, `COOKIE_SECURE=true`, koneksi host/user/database eksplisit dan password DB non-placeholder minimal **16 byte**. SSL wajib `verify-full` dan `DB_SSLROOTCERT` berupa CA PEM yang dapat dibaca atau `system` untuk trust store OS. Mode `disable`, `require`, dan `verify-ca` ditolak pada production; nilai `allow/prefer` ditolak pada semua mode. Validasi gagal sebelum koneksi DB/listener dibuka. File CA, sertifikat server/hostname dan konektivitas diperiksa saat startup ping; TLS terhadap infrastruktur nyata belum diuji hari 03. Jangan menurunkan SSL policy untuk membuat startup production lolos.
 
@@ -92,6 +92,8 @@ go run ./cmd/server
 Buka `http://localhost:8080/login.html` sesuai PUBLIC_BASE_URL/origin setelah schema dan akun staf domain tersedia. Konfigurasi divalidasi sekali; perubahan memerlukan restart. Aset default relatif terhadap cwd repository. Shutdown menguras request sebelum menutup DB; seluruh query bisnis memakai request context. Detail/struk privat; login/daftar memakai cookie dan daftar dirender lewat DOM aman. Import akun/data legacy, UI POS lengkap dan acceptance keamanan/operasional tetap diperlukan sebelum penggunaan nyata. Jangan mengekspos deployment publik dari increment ini.
 
 ## Perintah verifikasi
+
+Observability Hari 25: `go test ./internal/telemetry ./internal/config ./internal/http/... ./internal/app -skip '^TestPostgres' -count=1 -timeout=60s`; izin operations: `go test ./internal/service -run '^TestOperationsAuthorizationUsesCurrentActiveOwner$' -count=1 -timeout=45s`. Test lokal mencakup health/deadline/draining, redaksi log, panic/abort/write error, counter replay/failure dan shutdown/close. Tidak membutuhkan full UI test. Metrics memakai stdlib tanpa dependency/server monitoring baru; snapshot per proses bukan laporan finansial.
 
 Review keamanan Hari 24: semua respons memakai CSP dan header keamanan, aset publik dibatasi allowlist, body API maksimal 64 KiB dan `MaxHeaderBytes` 16 KiB. `JWT_ALGORITHM` hanya menerima HS256; origin HTTPS wajib cookie Secure di semua mode. Tracking publik dibatasi per TCP peer/proses. Detail threat model, batas bukti dan checklist rilis ada di [docs/security.md](docs/security.md#review-terarah-hari-24).
 
@@ -139,7 +141,7 @@ Path cache tersebut di luar repository `dev`; sesuaikan dengan workspace lokal. 
 
 ## Deployment
 
-Target: Ubuntu, binary Go + systemd, reverse proxy, dan Cloudflare Tunnel. Repository belum memiliki konfigurasi deployment, rollback, backup/restore teruji atau CI. Kesiapan deployment publik belum dibuktikan; penuhi kriteria penerimaan sebelum rilis. Palet biru dan identitas ULaundry dipertahankan.
+Target: Ubuntu, binary Go + systemd, reverse proxy, dan Cloudflare Tunnel. [Runbook](docs/runbook.md) memuat pemeriksaan health/log, DB unavailable, migration failure, high error rate dan rollback; konfigurasi deployment, backup/restore teruji serta CI belum tersedia. Kesiapan deployment publik belum dibuktikan; penuhi kriteria penerimaan sebelum rilis. Palet biru dan identitas ULaundry dipertahankan.
 
 ## Akun awal dan pengelolaan staf
 

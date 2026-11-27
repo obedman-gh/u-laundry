@@ -10,7 +10,10 @@ Semua body JSON memakai satu Content-Type application/json (charset UTF-8 opsion
 | GET /api/session | Sesi aktif; user_id/username/role/csrf_token/expires_at, no-store |
 | GET /api/audit/events | Owner aktif; filter from/to/action/source/actor_id/entity/entity_id/request_id, limit/offset; audit bisnis + keamanan, default 30 hari WITA |
 | POST /api/logout | Cookie + X-CSRF-Token/Origin; revoke persisten dan hapus cookie; cookie lama 401 |
-| GET /api/health | Ping database; 200 sehat, 503 health_unavailable saat gagal; bukan liveness/readiness terpisah |
+| GET /api/health | Alias readiness kompatibel; body sukses status/version/database existing tetap |
+| GET /api/health/live | Publik, 200 status=alive tanpa DB; tidak menunjukkan kesiapan transaksi |
+| GET /api/health/ready | Publik, PingContext dibatasi HEALTH_READINESS_TIMEOUT (default 2s); 200 sehat, 503 health_unavailable saat DB gagal/timeout, 503 not_ready saat draining |
+| GET /api/ops/metrics | Cookie valid + owner aktif saat ini; admin/cashier 403. Snapshot JSON per proses: started_at, requests, business, db_pool; no-store, tanpa ID/payload bisnis |
 | POST /api/customers | Staf aktif; name wajib, contact/address/notes opsional -> customer_id/name |
 | GET /api/customers?q=Nama&limit=20&offset=0 | Staf aktif; cari nama/kontak (q opsional), hanya customer_id/name/contact |
 | GET /api/customers/{id} | Staf aktif; profil termasuk address/notes/version |
@@ -150,7 +153,7 @@ Semua kegagalan endpoint API memakai bentuk berikut, termasuk JWT/CORS, 404, met
 | 413 | payload_too_large | Body melewati 65.536 byte, termasuk stream tanpa Content-Length |
 | 415 | unsupported_media_type / unsupported_content_encoding | Tipe/charset/encoding tidak didukung |
 | 500 | internal_error | Error internal, storage constraint/invalid stored data, panic atau encoding response gagal |
-| 503 | service_unavailable / health_unavailable | Repository atau health dependency tidak tersedia |
+| 503 | service_unavailable / health_unavailable / not_ready | Repository/health dependency tidak tersedia atau server draining |
 | 504 | deadline_exceeded | Context deadline habis |
 
 Message domain/repository/driver, stack trace, nilai panic, password/hash dan input ditolak tidak disalin ke error. Error tidak menjamin operasi belum commit bila respons jaringan gagal; gunakan key dan payload semula untuk retry order/payment. Create customer belum idempotent. Panic setelah header dikirim membatalkan koneksi memakai ErrAbortHandler, tidak menulis JSON kedua atau mengubah sukses yang sudah dikirim. Error parsing pada protokol HTTP oleh net/http/proxy dan redirect normalisasi URL bukan respons endpoint JSON.

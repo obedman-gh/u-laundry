@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"ulaundry/internal/http/response"
+	"ulaundry/internal/telemetry"
 
 	"ulaundry/internal/http/middleware"
 )
@@ -43,6 +44,9 @@ type Endpoints interface {
 	CurrentSession(http.ResponseWriter, *http.Request)
 	Logout(http.ResponseWriter, *http.Request)
 	HealthCheck(http.ResponseWriter, *http.Request)
+	Liveness(http.ResponseWriter, *http.Request)
+	Readiness(http.ResponseWriter, *http.Request)
+	OperationalMetrics(http.ResponseWriter, *http.Request)
 	GetPesananById(http.ResponseWriter, *http.Request)
 	CetakStruk(http.ResponseWriter, *http.Request)
 	Login(http.ResponseWriter, *http.Request)
@@ -61,7 +65,9 @@ type Endpoints interface {
 // NewRouter keeps API routing separate from the static file namespace.
 func NewRouter(h Endpoints, m *middleware.Middleware, assets http.FileSystem) http.Handler {
 	api := http.NewServeMux()
+	routePatterns := map[string]bool{}
 	register := func(path string, methods map[string]http.HandlerFunc) {
+		routePatterns[path] = true
 		if get, ok := methods[http.MethodGet]; ok {
 			methods[http.MethodHead] = get
 		}
@@ -80,6 +86,9 @@ func NewRouter(h Endpoints, m *middleware.Middleware, assets http.FileSystem) ht
 		})
 	}
 	register("/api/health", map[string]http.HandlerFunc{"GET": h.HealthCheck})
+	register("/api/health/live", map[string]http.HandlerFunc{"GET": h.Liveness})
+	register("/api/health/ready", map[string]http.HandlerFunc{"GET": h.Readiness})
+	register("/api/ops/metrics", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.OperationalMetrics)})
 	register("/api/audit/events", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.AuditEvents)})
 	register("/api/laporan/dashboard", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.DashboardReport)})
 	register("/api/laporan/orders", map[string]http.HandlerFunc{"GET": m.ValidasiJWT(h.ReportOrders)})
@@ -132,5 +141,17 @@ func NewRouter(h Endpoints, m *middleware.Middleware, assets http.FileSystem) ht
 		}
 		static.ServeHTTP(w, r)
 	}
-	return middleware.RequestContext(m.SecurityHeaders(m.BukaPintuCORS(middleware.RequestLimits(http.HandlerFunc(dispatch)).ServeHTTP)))
+	secured := m.SecurityHeaders(m.BukaPintuCORS(middleware.RequestLimits(http.HandlerFunc(dispatch)).ServeHTTP))
+	return m.ObserveRequests(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		route := "static"
+		if r.URL.Path == "/api" || strings.HasPrefix(r.URL.Path, "/api/") {
+			route = "api.unmatched"
+			_, pattern := api.Handler(r)
+			if routePatterns[pattern] {
+				route = pattern
+			}
+		}
+		telemetry.SetRoute(r.Context(), route)
+		secured.ServeHTTP(w, r)
+	}))
 }

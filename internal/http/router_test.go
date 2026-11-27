@@ -83,6 +83,15 @@ func (e *endpointRecorder) record(name string, w http.ResponseWriter, r *http.Re
 func (e *endpointRecorder) HealthCheck(w http.ResponseWriter, r *http.Request) {
 	e.record("health", w, r)
 }
+func (e *endpointRecorder) Liveness(w http.ResponseWriter, r *http.Request) {
+	e.record("liveness", w, r)
+}
+func (e *endpointRecorder) Readiness(w http.ResponseWriter, r *http.Request) {
+	e.record("readiness", w, r)
+}
+func (e *endpointRecorder) OperationalMetrics(w http.ResponseWriter, r *http.Request) {
+	e.record("metrics", w, r)
+}
 func (e *endpointRecorder) GetPesananById(w http.ResponseWriter, r *http.Request) {
 	e.record("detail", w, r)
 }
@@ -134,6 +143,9 @@ func TestExistingRoutes(t *testing.T) {
 		private                   bool
 	}{
 		{"GET", "/api/health", "health", "", false},
+		{"GET", "/api/health/live", "liveness", "", false},
+		{"GET", "/api/health/ready", "readiness", "", false},
+		{"GET", "/api/ops/metrics", "metrics", "", true},
 		{"GET", "/api/audit/events", "audit-events", "", true},
 		{"GET", "/api/laporan/dashboard", "dashboard-report", "", true},
 		{"GET", "/api/laporan/orders?kind=receivable", "order-report", "", true},

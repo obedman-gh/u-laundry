@@ -15,13 +15,13 @@ import (
 	"ulaundry/internal/repository/postgres"
 	"ulaundry/internal/security"
 	"ulaundry/internal/service"
+	"ulaundry/internal/telemetry"
 )
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	if err := run(ctx); err != nil {
-		slog.Error("Server ULaundry gagal", "error", err)
 		os.Exit(1)
 	}
 }
@@ -29,18 +29,21 @@ func main() {
 func run(ctx context.Context) error {
 	settings, err := config.Load()
 	if err != nil {
+		telemetry.NewLogger(os.Stdout, slog.LevelInfo).Error("startup.failed", "error_class", "configuration")
 		return err
 	}
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: settings.LogLevel}))
+	logger := telemetry.NewLogger(os.Stdout, settings.LogLevel)
 	db, err := platform.OpenDatabase(ctx, settings.Database)
 	if err != nil {
+		logger.Error("startup.failed", "error_class", "database")
 		return err
 	}
-	logger.Info("Database ULaundry siap; memulai server HTTP", "address", settings.HTTP.Address, "environment", settings.Environment)
+	logger.Info("startup.database_ready", "environment", settings.Environment)
 	store := postgres.New(db)
 	uow := service.WithAccessAudit(store, store)
 	runtime := service.Runtime{Clock: platform.SystemClock{}, IDs: platform.RandomIDs{}, Tokens: platform.RandomTokens{}}
 	use := handler.Dependencies{
+		Logger: logger, Operations: service.NewOperations(uow),
 		Audit:     service.NewAuditTrail(uow, runtime),
 		Shifts:    service.NewShifts(uow, runtime),
 		Staff:     service.NewStaffManagement(uow, runtime, platform.Passwords{}),
@@ -57,6 +60,5 @@ func run(ctx context.Context) error {
 	if err := app.New(settings, db, use).Run(ctx); err != nil {
 		return err
 	}
-	logger.Info("Server HTTP dihentikan dan koneksi database ditutup")
 	return nil
 }

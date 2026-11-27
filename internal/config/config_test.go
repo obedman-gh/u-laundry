@@ -27,6 +27,21 @@ func productionEnv() map[string]string {
 func parseMap(env map[string]string) (Config, error) {
 	return Parse(func(key string) string { return env[key] })
 }
+func TestReadinessTimeoutConfiguration(t *testing.T) {
+	for _, value := range []string{"0s", "-1s", "invalid", "10s", "11s"} {
+		env := developmentEnv()
+		env["HEALTH_READINESS_TIMEOUT"] = value
+		if _, err := parseMap(env); err == nil {
+			t.Fatal("unsafe readiness timeout", value)
+		}
+	}
+	env := developmentEnv()
+	env["HEALTH_READINESS_TIMEOUT"] = "500ms"
+	c, err := parseMap(env)
+	if err != nil || c.HTTP.ReadinessTimeout != 500*time.Millisecond {
+		t.Fatal("readiness override", err)
+	}
+}
 
 func TestSecurityStartupGuards(t *testing.T) {
 	for _, tc := range []struct{ key, value string }{
