@@ -28,6 +28,31 @@ func parseMap(env map[string]string) (Config, error) {
 	return Parse(func(key string) string { return env[key] })
 }
 
+func TestSecurityStartupGuards(t *testing.T) {
+	for _, tc := range []struct{ key, value string }{
+		{"JWT_ALGORITHM", "none"}, {"JWT_ALGORITHM", "HS384"}, {"JWT_ALGORITHM", "hs256"},
+		{"JWT_SECRET", testJWT + "\ninternal"}, {"COOKIE_SECRET", testCookie + "\u200b"},
+	} {
+		env := developmentEnv()
+		env[tc.key] = tc.value
+		_, err := parseMap(env)
+		if err == nil || strings.Contains(err.Error(), tc.value) {
+			t.Fatal("unsafe setting accepted or leaked", tc.key)
+		}
+	}
+	env := developmentEnv()
+	env["PUBLIC_BASE_URL"] = "https://staff.invalid"
+	env["COOKIE_SECURE"] = "false"
+	if _, err := parseMap(env); err == nil {
+		t.Fatal("HTTPS cookie without Secure")
+	}
+	env["COOKIE_SECURE"] = "true"
+	env["JWT_ALGORITHM"] = "HS256"
+	if _, err := parseMap(env); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestValidConfiguration(t *testing.T) {
 	for _, tc := range []struct {
 		name string

@@ -114,6 +114,9 @@ func Parse(getenv func(string) string) (Config, error) {
 	c.SessionLifetime = p.duration("SESSION_TTL", 8*time.Hour)
 	c.LoginLimit = p.integer("LOGIN_RATE_LIMIT", 10, 1)
 	c.LoginWindow = p.duration("LOGIN_RATE_WINDOW", time.Minute)
+	if algorithm := getenv("JWT_ALGORITHM"); algorithm != "" && algorithm != "HS256" {
+		p.fail("JWT_ALGORITHM", "hanya HS256 didukung")
+	}
 	if c.JWTIssuer == "" || len(c.JWTIssuer) > 200 || invalidAuthIdentifier(c.JWTIssuer) {
 		p.fail("JWT_ISSUER", "harus identifier eksplisit tanpa whitespace, maksimal 200 byte")
 	}
@@ -162,6 +165,9 @@ func Parse(getenv func(string) string) (Config, error) {
 	}
 	if (production || c.Cookie.SameSite == "none") && !c.Cookie.Secure {
 		p.fail("COOKIE_SECURE", "wajib true pada production atau SameSite none")
+	}
+	if strings.HasPrefix(c.PublicBaseURL, "https://") && !c.Cookie.Secure {
+		p.fail("COOKIE_SECURE", "wajib true untuk PUBLIC_BASE_URL HTTPS")
 	}
 	switch p.text("LOG_LEVEL", "info") {
 	case "debug":
@@ -246,7 +252,7 @@ func (p *parser) boolean(key string, fallback bool) bool {
 	return value == "true"
 }
 func (p *parser) secret(key, value string, minimum int) {
-	if len(value) < minimum || value != strings.TrimSpace(value) || placeholder(value) {
+	if len(value) < minimum || value != strings.TrimSpace(value) || placeholder(value) || strings.IndexFunc(value, func(r rune) bool { return unicode.IsControl(r) || unicode.Is(unicode.Cf, r) }) >= 0 {
 		p.fail(key, fmt.Sprintf("wajib secret non-placeholder minimal %d byte tanpa spasi tepi", minimum))
 	}
 }

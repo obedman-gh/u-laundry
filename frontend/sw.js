@@ -1,7 +1,7 @@
 'use strict';
 
 // Change for EVERY frontend release, including a rollback. Never reuse a version.
-const VERSION = '2026-11-27-1';
+const VERSION = '2026-11-27-2';
 const PREFIX = 'ulaundry-shell-';
 const CACHE = PREFIX + VERSION;
 // Only public, data-free files. No app pages, business scripts, or runtime cache.

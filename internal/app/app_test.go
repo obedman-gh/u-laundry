@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -21,6 +22,28 @@ type lifecycleDB struct {
 	closeErr   error
 	pingCount  atomic.Int32
 	pingErr    error
+}
+
+func TestHTTPHeaderLimitBeforeDatabaseWork(t *testing.T) {
+	db := &lifecycleDB{}
+	a := New(config.Config{}, db, handler.Dependencies{Health: db})
+	ts := httptest.NewUnstartedServer(a.server.Handler)
+	ts.Config.MaxHeaderBytes = a.server.MaxHeaderBytes
+	ts.Start()
+	defer ts.Close()
+	r, err := http.NewRequest("GET", ts.URL+"/api/health", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Header.Set("X-Oversized", strings.Repeat("x", 32<<10))
+	res, err := ts.Client().Do(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	if res.StatusCode != 431 || db.pingCount.Load() != 0 {
+		t.Fatal("oversized headers reached database", res.StatusCode)
+	}
 }
 
 func (db *lifecycleDB) Check(context.Context) error {

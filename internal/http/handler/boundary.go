@@ -16,13 +16,14 @@ import (
 
 	"ulaundry/internal/domain"
 	"ulaundry/internal/http/dto"
+	"ulaundry/internal/http/middleware"
 	"ulaundry/internal/http/response"
 	"ulaundry/internal/repository"
 	"ulaundry/internal/security"
 	"ulaundry/internal/service"
 )
 
-const MaxBodyBytes int64 = 64 << 10
+const MaxBodyBytes = middleware.MaxBodyBytes
 
 type validatedRequest interface{ Validate() error }
 

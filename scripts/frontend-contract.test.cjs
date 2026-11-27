@@ -20,7 +20,10 @@ function sessionBridge(context) {
 async function login(response, networkError = false) {
  const elements = new Map();
  const element = id => {
-  if (!elements.has(id)) elements.set(id, { style: {}, dataset: {}, value: 'synthetic', textContent: '', focus() {}, removeAttribute(name){delete this[name];}, setAttribute(name,value) { this[name] = value; }, addEventListener(type, fn) { this[type] = fn; } });
+  if (!elements.has(id)) {
+   const classes = new Set(id === 'eyeClosed' ? ['eye-closed'] : []);
+   elements.set(id, { classList: {add:name=>classes.add(name),remove:name=>classes.delete(name),contains:name=>classes.has(name),toggle(name,on){if(on)classes.add(name);else classes.delete(name);}}, dataset: {}, value: 'synthetic', textContent: '', focus() {}, removeAttribute(name){delete this[name];}, setAttribute(name,value) { this[name] = value; }, addEventListener(type, fn) { this[type] = fn; } });
+  }
   return elements.get(id);
  };
  const stored = new Map([["token", "legacy-token"]]);
@@ -29,9 +32,16 @@ async function login(response, networkError = false) {
   localStorage: { setItem() { throw new Error("JWT must not enter localStorage"); }, removeItem(k) { stored.delete(k); } }, console: { error() {} },
   fetch: async () => { if (networkError) throw new Error('synthetic offline'); return { ok: response.ok,status:response.status??(response.ok?200:500), json: async () => response.body }; }
  });
+ element('password').type = 'password';
  vm.runInContext(script, context);
+ element('togglePassword').click();
+ assert.equal(element('password').type, 'text');
+ assert.equal(element('eyeOpen').classList.contains('eye-closed'), true);
+ assert.equal(element('eyeClosed').classList.contains('eye-closed'), false);
  element('formLogin').submit({ preventDefault() {} });
  await new Promise(resolve => setImmediate(resolve));
+ assert.equal(element('password').type, 'password');
+ assert.equal(element('eyeClosed').classList.contains('eye-closed'), true);
  return { error: element('pesan-error'), button: element('btnLogin'), stored, window };
 }
 test('login hides backend authentication details, clears passwords and permits retry', async () => {

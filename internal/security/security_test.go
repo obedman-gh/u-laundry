@@ -87,6 +87,30 @@ func TestTokenClaimsPolicy(t *testing.T) {
 		})
 	}
 }
+
+func TestTokenRejectsNonCanonicalSignatureAndUnsignedToken(t *testing.T) {
+	raw, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims()).SignedString([]byte(key))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// HS256's 32-byte signature has unused base64 bits. An alias decodes to
+	// identical bytes under permissive decoding, but must not become a token alias.
+	const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+	last := strings.IndexByte(alphabet, raw[len(raw)-1])
+	alias := raw[:len(raw)-1] + string(alphabet[last+1])
+	unsigned, err := jwt.NewWithClaims(jwt.SigningMethodNone, claims()).SignedString(jwt.UnsafeAllowNoneSignatureType)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, value := range []string{alias, unsigned, raw + "=", raw + ".extra", strings.Repeat("x", 4097)} {
+		if _, err := policy().Parse(value, fixed); !errors.Is(err, security.ErrUnauthorized) {
+			t.Fatal("invalid token accepted")
+		}
+	}
+	if _, err := policy().Parse(raw, fixed.Add(8*time.Hour)); !errors.Is(err, security.ErrUnauthorized) {
+		t.Fatal("token valid at expiration")
+	}
+}
 func TestSessionCookieCSRFAndLogout(t *testing.T) {
 	store := &testutil.SessionStore{}
 	m := &security.Manager{Tokens: policy(), Store: store, Secret: "synthetic-csrf-key-32bytes-0000001", Origin: "https://laundry.invalid", Secure: true, SameSite: http.SameSiteLaxMode, Now: func() time.Time { return fixed }, Limiter: &security.Limiter{}}
@@ -110,6 +134,24 @@ func TestSessionCookieCSRFAndLogout(t *testing.T) {
 	r.Header.Set("X-CSRF-Token", m.CSRF(c))
 	if _, err := m.Authenticate(r); err != nil || !m.VerifyCSRF(r, c) {
 		t.Fatal("valid session/CSRF rejected")
+	}
+	for _, name := range []string{"missing-cookie", "duplicate-cookie", "bearer-with-cookie", "empty-authorization"} {
+		t.Run(name, func(t *testing.T) {
+			bad := r.Clone(context.Background())
+			switch name {
+			case "missing-cookie":
+				bad.Header.Del("Cookie")
+			case "duplicate-cookie":
+				bad.AddCookie(cookie)
+			case "bearer-with-cookie":
+				bad.Header.Set("Authorization", "Bearer "+raw)
+			case "empty-authorization":
+				bad.Header.Set("Authorization", "")
+			}
+			if _, err := m.Authenticate(bad); !errors.Is(err, security.ErrUnauthorized) {
+				t.Fatal("ambiguous session transport accepted")
+			}
+		})
 	}
 	for _, name := range []string{"missing", "wrong", "duplicate", "cross-origin", "cross-site"} {
 		t.Run(name, func(t *testing.T) {

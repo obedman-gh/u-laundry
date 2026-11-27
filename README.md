@@ -93,6 +93,10 @@ Buka `http://localhost:8080/login.html` sesuai PUBLIC_BASE_URL/origin setelah sc
 
 ## Perintah verifikasi
 
+Review keamanan Hari 24: semua respons memakai CSP dan header keamanan, aset publik dibatasi allowlist, body API maksimal 64 KiB dan `MaxHeaderBytes` 16 KiB. `JWT_ALGORITHM` hanya menerima HS256; origin HTTPS wajib cookie Secure di semua mode. Tracking publik dibatasi per TCP peer/proses. Detail threat model, batas bukti dan checklist rilis ada di [docs/security.md](docs/security.md#review-terarah-hari-24).
+
+Verifikasi keamanan tanpa database: `go test ./internal/config ./internal/security ./internal/http/... ./internal/app -skip '^TestPostgres' -count=1 -timeout=60s`. Analisis area itu: `go vet ./internal/config ./internal/security ./internal/http/... ./internal/app`; integritas modul: `go mod verify`. Kontrak DOM tetap memakai `node --test scripts/frontend-contract.test.cjs`; `node scripts/pwa-browser-check.cjs` juga menguji CSP server pada fixture browser lokal. Tambahkan aset publik baru ke allowlist `internal/http/assets.go` dan ganti versi worker setiap rilis frontend.
+
 | Kebutuhan | Perintah/status saat ini |
 |---|---|
 | Format area yang direfactor | `gofmt -w cmd internal` (cek saja: `gofmt -l cmd internal`) |

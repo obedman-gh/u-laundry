@@ -39,6 +39,7 @@ func New(settings config.Config, db Database, use handler.Dependencies) *App {
 			ReadHeaderTimeout: settings.HTTP.ReadHeaderTimeout,
 			WriteTimeout:      settings.HTTP.WriteTimeout,
 			IdleTimeout:       settings.HTTP.IdleTimeout,
+			MaxHeaderBytes:    16 << 10,
 		},
 		db: db, shutdownTimeout: settings.HTTP.ShutdownTimeout,
 	}

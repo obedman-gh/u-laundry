@@ -81,7 +81,9 @@ func TestTrustedOrigins(t *testing.T) {
 			m := New([]string{"https://staff.invalid", "https://owner.invalid"}, testutil.TestSessions("fixture"))
 			h := m.BukaPintuCORS(func(w http.ResponseWriter, r *http.Request) { called = true; w.WriteHeader(200) })
 			req := httptest.NewRequest(tc.method, "/api/login", nil)
-			req.Header.Set("Origin", tc.origin)
+			if tc.origin != "" {
+				req.Header.Set("Origin", tc.origin)
+			}
 			req.Header.Set("Access-Control-Request-Method", tc.requestedMethod)
 			req.Header.Set("Access-Control-Request-Headers", tc.requestedHeaders)
 			rr := httptest.NewRecorder()

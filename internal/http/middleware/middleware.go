@@ -2,8 +2,11 @@ package middleware
 
 import (
 	"context"
+	"net"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 	"ulaundry/internal/http/response"
 
 	"errors"
@@ -15,8 +18,9 @@ type actorKey struct{}
 func ActorID(ctx context.Context) string { value, _ := ctx.Value(actorKey{}).(string); return value }
 
 type Middleware struct {
-	sessions       *security.Manager
-	trustedOrigins map[string]bool
+	sessions        *security.Manager
+	trustedOrigins  map[string]bool
+	trackingLimiter *security.Limiter
 }
 
 func New(trustedOrigins []string, sessions *security.Manager) *Middleware {
@@ -26,14 +30,14 @@ func New(trustedOrigins []string, sessions *security.Manager) *Middleware {
 			origins[origin] = true
 		}
 	}
-	return &Middleware{sessions: sessions, trustedOrigins: origins}
+	return &Middleware{sessions: sessions, trustedOrigins: origins, trackingLimiter: &security.Limiter{}}
 }
 
 func (m *Middleware) BukaPintuCORS(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Add("Vary", "Origin")
 		origin := r.Header.Get("Origin")
-		if len(r.Header.Values("Origin")) > 1 {
+		if len(r.Header.Values("Origin")) > 1 || len(r.Header.Values("Origin")) == 1 && origin == "" {
 			response.Fail(w, r, http.StatusForbidden, "origin_forbidden", "Origin tidak diizinkan.")
 			return
 		}
@@ -49,7 +53,7 @@ func (m *Middleware) BukaPintuCORS(next http.HandlerFunc) http.HandlerFunc {
 			w.Header().Add("Vary", "Access-Control-Request-Method")
 			w.Header().Add("Vary", "Access-Control-Request-Headers")
 			method := r.Header.Get("Access-Control-Request-Method")
-			if origin == "" || (method != "GET" && method != "HEAD" && method != "POST" && method != "PUT") {
+			if len(r.Header.Values("Access-Control-Request-Method")) != 1 || len(r.Header.Values("Access-Control-Request-Headers")) > 1 || origin == "" || (method != "GET" && method != "HEAD" && method != "POST" && method != "PUT") {
 				response.Fail(w, r, http.StatusForbidden, "preflight_forbidden", "Preflight tidak diizinkan.")
 				return
 			}
@@ -68,6 +72,29 @@ func (m *Middleware) BukaPintuCORS(next http.HandlerFunc) http.HandlerFunc {
 		}
 
 		next.ServeHTTP(w, r)
+	}
+}
+
+// TrackingLimit uses the TCP peer only; untrusted forwarding headers cannot
+// create new buckets. Tokens and URLs are never used as limiter keys or logged.
+func (m *Middleware) TrackingLimit(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		peer, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			peer = r.RemoteAddr
+		}
+		if ip := net.ParseIP(peer); ip != nil {
+			peer = ip.String()
+		}
+		allowed, retry, _ := m.trackingLimiter.Take(time.Now(),
+			security.Limit{Key: "global", Count: 300, Window: time.Minute},
+			security.Limit{Key: "peer:" + peer, Count: 60, Window: time.Minute})
+		if !allowed {
+			w.Header().Set("Retry-After", strconv.Itoa(int(retry.Seconds())+1))
+			response.Fail(w, r, 429, "rate_limited", "Terlalu banyak permintaan. Silakan coba kembali nanti.")
+			return
+		}
+		next(w, r)
 	}
 }
 

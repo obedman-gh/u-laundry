@@ -203,6 +203,23 @@ func TestExistingStaticAssets(t *testing.T) {
 	}
 	assets := filepath.Join(filepath.Dir(sourceFile), "..", "..", "frontend")
 	router := NewRouter(&endpointRecorder{}, middleware.New(nil, testutil.TestSessions("fixture")), http.Dir(assets))
+	for name := range publicAssetNames {
+		if name == "/index.html" {
+			continue
+		}
+		want, err := os.ReadFile(filepath.Join(assets, filepath.FromSlash(strings.TrimPrefix(name, "/"))))
+		if err != nil {
+			t.Fatal("missing allowlisted asset", name, err)
+		}
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest("GET", name, nil))
+		if w.Code != 200 || !bytes.Equal(w.Body.Bytes(), want) {
+			t.Fatal("allowlisted asset unavailable", name, w.Code)
+		}
+		if name == "/manifest.webmanifest" && !strings.Contains(w.Header().Get("Content-Type"), "json") {
+			t.Fatal("manifest media type", w.Header().Get("Content-Type"))
+		}
+	}
 	for _, tc := range []struct{ url, file string }{{"/", "index.html"}, {"/login.html", "login.html"}} {
 		t.Run(tc.file, func(t *testing.T) {
 			want, err := os.ReadFile(filepath.Join(assets, tc.file))
@@ -272,7 +289,9 @@ func TestAPIErrorsDoNotFallThroughToStaticFiles(t *testing.T) {
 			e := &endpointRecorder{}
 			router := NewRouter(e, middleware.New(nil, testutil.TestSessions("fixture")), http.FS(fstest.MapFS{"api/private": {Data: []byte("must-not-be-served")}}))
 			r := httptest.NewRequest(tc.method, tc.path, nil)
-			r.Header.Set("Origin", tc.origin)
+			if tc.origin != "" {
+				r.Header.Set("Origin", tc.origin)
+			}
 			r.Header.Set("X-Request-ID", "caller-private-value")
 			w := httptest.NewRecorder()
 			router.ServeHTTP(w, r)

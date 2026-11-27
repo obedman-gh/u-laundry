@@ -50,7 +50,7 @@ func (p Tokens) Parse(raw string, at time.Time) (Claims, error) {
 			return nil, ErrUnauthorized
 		}
 		return []byte(p.Secret), nil
-	}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithIssuer(p.Issuer), jwt.WithAudience(p.Audience), jwt.WithExpirationRequired(), jwt.WithIssuedAt(), jwt.WithTimeFunc(func() time.Time { return at }))
+	}, jwt.WithValidMethods([]string{"HS256"}), jwt.WithStrictDecoding(), jwt.WithIssuer(p.Issuer), jwt.WithAudience(p.Audience), jwt.WithExpirationRequired(), jwt.WithIssuedAt(), jwt.WithTimeFunc(func() time.Time { return at }))
 	if err != nil || !token.Valid || c.IssuedAt == nil || c.ExpiresAt == nil || c.IssuedAt.After(at) || !c.ExpiresAt.After(c.IssuedAt.Time) || c.ExpiresAt.Sub(c.IssuedAt.Time) > p.Lifetime || !identifier(c.Subject) || !identifier(c.Username) || len(c.ID) < 26 || len(c.ID) > 64 || !identifier(c.ID) || !role(c.Role) {
 		return Claims{}, ErrUnauthorized
 	}

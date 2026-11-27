@@ -1,6 +1,54 @@
-# Keamanan autentikasi dan authorization ULaundry — hari 17
+# Keamanan ULaundry — review terarah Hari 24
 
-Diperbarui 25 November 2026, Asia/Makassar. Berlaku untuk server domain Go/PostgreSQL saat ini; belum merupakan penerimaan keamanan produksi menyeluruh. Tidak ada akun, password, sesi operasional, .env atau deployment pengguna yang diubah dalam pekerjaan ini. Audit lengkap, retensi dan upgrade schema 12 dijelaskan pada [audit.md](audit.md).
+Diperbarui 27 November 2026, Asia/Makassar. Berlaku untuk server domain Go/PostgreSQL saat ini; belum merupakan penerimaan keamanan produksi menyeluruh. Tidak ada akun, password, sesi operasional, .env atau deployment pengguna yang diubah dalam pekerjaan ini. Audit lengkap, retensi dan upgrade schema 12 dijelaskan pada [audit.md](audit.md).
+
+## Review terarah Hari 24
+
+Scope: code review dan test lokal/fixture sintetis untuk auth, authorization, CORS, cookie/CSRF, header, input/limit, XSS, SQL injection, IDOR, tracking, struk, limiter, log, secret, dependency dan error leakage. Tidak ada penetration test server publik, performance test, perubahan DB atau deployment. Bagian Hari 09–17 di bawah adalah konteks kontrol existing; bukti aktual Hari 24 ada pada [laporan](progress/day-24.md).
+
+### Temuan dan hasil
+
+| Prioritas / area | Temuan sebelum perbaikan — hasil |
+|---|---|
+| High bersyarat: file statis / secret | `http.FileServer(http.Dir(STATIC_DIR))` dapat menyajikan `.env`, source atau backup bila root salah diarahkan atau file privat tersalin ke frontend. Kini hanya nama aset publik eksplisit pada `internal/http/assets.go` yang disajikan; direktori, file tak terdaftar dan metode tulis ditolak. Salah root tidak membuka arbitrary file. |
+| Medium: header / XSS / clickjacking | Header keamanan belum menyeluruh pada HTML/aset/redirect. Kini CSP enforced, framing ditolak, nosniff, no-referrer, Permissions-Policy, COOP/CORP same-origin, noindex dan no-store berlaku pada router, termasuk error dan struk. |
+| Medium: request limits | Decoder JSON sudah membatasi 64 KiB, tetapi logout, GET dan route lain belum memiliki batas body yang sama. Kini body semua API dibaca dengan batas 64 KiB sebelum auth/use case, termasuk Content-Length tak diketahui/chunked; terlalu besar mendapat 413, read failure 400 tanpa detail internal. Server menetapkan MaxHeaderBytes 16 KiB dan tetap memakai timeout existing. |
+| Medium: public availability | Tracking belum dibatasi. Kini GET/HEAD berbagi limit 60/menit per peer TCP dan 300/menit per proses, dengan Retry-After; token tidak menjadi key limiter dan header forwarding tidak dipercaya. |
+| Hardening: CORS | Default origin utama dan penolakan wildcard sudah tersedia pada config. Runtime juga menolak Origin kosong eksplisit/duplikat serta preflight method/header duplikat. Tidak ada fallback wildcard atau Allow-Credentials. Missing Origin tetap sah untuk read klien nonbrowser; mutasi tetap wajib Origin dan CSRF. |
+| Hardening: JWT / startup | HS256 exact, signature, claims dan sesi aktif sudah diperiksa. Parser kini juga menolak base64 dengan pad bits nonkanonis. JWT_ALGORITHM opsional hanya boleh HS256; secret control/format character ditolak; URL HTTPS wajib cookie Secure di semua mode. |
+| Frontend | Tidak ditemukan sink innerHTML/outerHTML/insertAdjacentHTML/document.write/eval pada frontend yang ditinjau. Nama/catatan/pesan memakai textContent, input.value atau DOM node; struk memakai html/template. Toggle password kini memakai classList agar konsisten dengan CSP tanpa style inline. Worker berganti ke versi 2026-11-27-2. |
+
+Tidak ditemukan temuan Critical dalam scope ini. Temuan High bersyarat di atas ditutup pada kode; ini tidak menyatakan seluruh instalasi produksi bebas risiko. Allowlist bukan pertahanan terhadap penyerang yang sudah dapat mengganti berkas aplikasi yang diizinkan: direktori rilis harus hanya dapat ditulis operator tepercaya, tanpa symlink ke secret.
+
+### Threat model ringkas
+
+- Aset: password/hash staf, JWT/cookie/CSRF, data pribadi pelanggan, tautan tracking, struk, ledger dan audit. Trust boundary: browser atau pemegang token publik → reverse proxy/Tunnel → HTTP Go → service authorization → PostgreSQL. Konfigurasi/release filesystem berada di boundary operator.
+- Penyerang anonim mencoba brute force, malformed/oversized input, token palsu dan resource ID tebakan. Browser berorigin lain mencoba CSRF/framing/exfiltration. Staf berizin rendah mencoba eskalasi role atau resource shift staf lain. Input pelanggan/layanan/catatan dapat membawa payload XSS atau SQL; server tidak menganggapnya kode.
+- Auth cookie hanya menerima satu cookie host-only dan menolak Bearer. HS256 exact + issuer/audience/iat/exp/sub/role/jti, TTL terbatas, database session check dan pencabutan credential tetap wajib. Login generik dan limiter sebelum bcrypt tetap dipertahankan.
+- Authorization dimuat ulang dari staf aktif pada service, bukan role UI/claim saja. Owner mengelola staf/audit; owner/admin untuk pengaturan harga/refund/laporan; staf aktif dapat membaca order/pelanggan/struk toko sesuai matrix. Membaca order staf lain di toko yang sama memang izin bisnis, bukan IDOR. Kasir tidak boleh membaca/mengubah shift kasir lain; owner/admin hanya dapat membaca shift lain.
+- Origin exact dan HMAC CSRF wajib pada mutasi privat; login wajib origin utama. Cookie HttpOnly/Secure/SameSite dan CSP saling melengkapi. CSP membatasi sumber skrip/style/koneksi/worker/manifest ke self, menolak object/base/framing dan skrip inline/eval. HSTS max-age 31536000 hanya pada konfigurasi Secure + origin HTTPS, termasuk TLS termination; tidak memakai X-Forwarded-Proto atau includeSubDomains/preload.
+- Tracking adalah bearer capability crypto/rand 256 bit, hash tersimpan, expiry 90 hari dan rotasi privat; fragment dibersihkan dari address bar dan tanpa persistence browser. Projection publik hanya kode/status/estimasi/pesan. Invalid/missing/expired token berkontrak 404 yang sama; ID order tidak menggantikan token. Struk tidak tersedia pada route publik dan respons privat no-store.
+- SQL menggunakan parameter untuk nilai eksternal; gabungan string yang ditinjau adalah kolom/filter/potongan SQL tetap. DTO dan domain memvalidasi input, nilai status, ID, pagination dan uang integer; tidak mengubah schema atau transaksi keuangan dalam review ini. Error driver/domain mentah tidak diserialisasi; panic response juga generik dengan request ID buatan server.
+- Log runtime yang ditinjau berisi outcome startup/shutdown dan error storage teredaksi; audit memakai metadata terkontrol, tanpa token/password/payload anonim. Token tracking tetap ada dalam path API, sehingga log reverse proxy/Cloudflare/analytics wajib disunting atau dimatikan untuk route itu. Belum ada pemeriksaan konfigurasi log infrastruktur nyata.
+
+### Checklist keamanan
+
+- [x] Auth positif/negatif: salah signature/algoritma, unsigned/expired/missing claims, token malformed/alias base64, duplicate cookie dan Bearer ditolak; cookie/CSRF/logout/replay diuji melalui unit/fake storage.
+- [x] Authorization/IDOR: route privat GET/HEAD memerlukan sesi; role terkini dicek use case, owner-only staf/audit dan privacy projection tracking diuji. Struk meng-escape payload HTML. Matrix bisnis existing dipertahankan.
+- [x] CORS: origin exact/allowlist, suffix attack/null/empty/duplikat dan preflight tak sah ditolak, tanpa wildcard/credential fallback; config production menolak HTTP/wildcard origin.
+- [x] Input/limit/error: JSON type/content type/compression/duplicate key/unknown field/query/path divalidasi; body known/chunked dibatasi; error body dan panic tidak membocorkan detail internal.
+- [x] Header dan frontend: CSP pada respons sukses/gagal/statis, HSTS mengikuti config; Edge loopback memblokir inline script, base injection dan fetch eksternal. Toggle password, manifest, worker, update, offline privacy dan print/mobile fixture tetap bekerja.
+- [x] Rate limit: login peer/account/global existing dan tracking peer/global; X-Forwarded-For tidak menjadi jalan bypass. Tidak ada IP/token tracking dicatat oleh limiter publik; peer hanya key memori proses.
+- [x] Secret/config: tidak mengubah `.env` operasional; Git melacak `.env.example`, bukan `.env`. Startup guard synthetic diuji tanpa mencetak nilai secret. Ini bukan hasil scanner secret seluruh histori Git.
+- [x] Dependency integrity: `go mod verify` lulus; `go list -m all` memeriksa versi terpilih. Go 1.27.3, jwt/v5 5.3.1, godotenv 1.5.1, pq 1.12.3, x/crypto 0.58.0, x/sys 0.49.0, x/term 0.47.0; graph juga memilih x/net 0.60.0 dan x/text 0.43.0. Tidak ada perubahan dependency.
+- [x] Static analysis tersedia: `go vet` pada config/security/http/app lulus. Tidak menginstal tool/dependency tambahan hanya untuk review ini.
+- [ ] `govulncheck`/`staticcheck` tidak terpasang pada sesi ini. Integritas modul bukan vulnerability scan, dan versi di atas tidak dinyatakan latest atau bebas CVE. Jalankan `govulncheck ./...` dengan database advisori terkini pada lingkungan rilis yang menyediakannya.
+- [ ] PostgreSQL auth/revocation integration tidak diulang Hari 24; tidak ada perubahan SQL/schema/session store. Acceptance browser–DB, role DB least privilege, TLS dan konfigurasi proxy/Tunnel/cache/log produksi tetap perlu diverifikasi sebelum exposure publik.
+- [ ] Limiter masih per proses/reset saat restart dan membagi bucket peer bila proxy menyatukan alamat staf/pelanggan. Banyak instance memerlukan limiter bersama/kontrol edge; jangan langsung mempercayai X-Forwarded-For. Belum ada limit umum semua read API selain timeout, ukuran request, pagination dan izin.
+
+Sebelum deployment, gunakan origin utama HTTPS, cookie Secure dan secret terpisah, layani hanya direktori rilis publik, bypass cache respons privat pada proxy/Cloudflare, serta pertahankan CSP tanpa unsafe-inline/unsafe-eval. Penambahan aset membutuhkan pembaruan allowlist; setiap rilis frontend/rollback membutuhkan versi worker baru. Tidak ada migrasi; rollback kode lama membuka kembali kelemahan yang ditutup, sehingga utamakan forward fix.
+
+Referensi kontrol: [OWASP CSP](https://cheatsheetseries.owasp.org/cheatsheets/Content_Security_Policy_Cheat_Sheet.html) dan [Go vulnerability database](https://go.dev/doc/security/vuln/database). Bukti perintah dan batas aktual ada di [laporan Hari 24](progress/day-24.md); command frontend/browser tetap memakai script README existing, bukan tool verifikasi paralel baru.
 
 ## Audit dan keputusan penyimpanan
 

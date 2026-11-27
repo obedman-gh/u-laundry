@@ -8,13 +8,13 @@
   const reason = new URLSearchParams(window.location.search).get('reason');
   if (Object.keys(reasons).includes(reason)) { el('login-notice').hidden = false; ui.message(el('login-notice'),reasons[reason]); }
   function hidePassword() {
-    password.type = 'password'; el('eyeOpen').style.display = 'block'; el('eyeClosed').style.display = 'none';
+    password.type = 'password'; el('eyeOpen').classList.remove('eye-closed'); el('eyeClosed').classList.add('eye-closed');
     el('togglePassword').setAttribute('aria-pressed','false'); el('togglePassword').setAttribute('aria-label','Tampilkan kata sandi'); el('togglePassword').title = 'Tampilkan kata sandi';
   }
   function show(text) { ui.message(el('pesan-error'),text,'error'); password.focus(); }
   el('togglePassword').addEventListener('click',() => {
     const visible = password.type === 'password'; password.type = visible?'text':'password';
-    el('eyeOpen').style.display = visible?'none':'block'; el('eyeClosed').style.display = visible?'block':'none';
+    el('eyeOpen').classList.toggle('eye-closed', visible); el('eyeClosed').classList.toggle('eye-closed', !visible);
     el('togglePassword').setAttribute('aria-pressed',String(visible)); el('togglePassword').setAttribute('aria-label',visible?'Sembunyikan kata sandi':'Tampilkan kata sandi'); el('togglePassword').title = visible?'Sembunyikan kata sandi':'Tampilkan kata sandi';
   });
   form.addEventListener('submit',async event => {
