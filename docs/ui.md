@@ -103,6 +103,11 @@ window.ULaundryUI.state(container, {
 
 Helper hanya membentuk elemen dan textContent, tanpa innerHTML atau template string HTML dari data. Sesi/CSRF hanya di memori seperti alur existing; tidak menambahkan penyimpanan JWT/token di localStorage. Login tetap membersihkan token legacy. Tracking tetap membaca fragmen token tanpa mengirimnya sebagai URL halaman atau mengubah projection publik.
 
+## PWA Hari 23 — tindakan — hasil
+
+- Panel Aplikasi ULaundry — status koneksi, pemasangan jika browser mendukung dan notifikasi pembaruan tersedia di alur halaman, tanpa menutupi formulir; panel disembunyikan saat cetak.
+- Offline/update — shell umum tidak memuat data bisnis, koneksi pulih memerlukan retry manual dan update tidak me-reload tab otomatis. Draft/key memori harus dipastikan sebelum reload; tidak ada antrean transaksi. Aturan cache, versi setiap rilis, verifikasi dan recovery pada [pwa.md](pwa.md) serta [laporan Hari 23](progress/day-23.md).
+
 ## Dashboard, shift dan laporan Hari 22 — tindakan — hasil
 
 | Tindakan | Hasil |

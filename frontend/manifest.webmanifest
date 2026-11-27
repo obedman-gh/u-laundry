@@ -1,0 +1,16 @@
+{
+  "id": "/",
+  "name": "ULaundry — Perumahan Viola",
+  "short_name": "ULaundry",
+  "lang": "id",
+  "description": "Akses operasional laundry staf. Transaksi memerlukan koneksi.",
+  "start_url": "/login.html",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#007bff",
+  "background_color": "#f4f4f9",
+  "icons": [
+    {"src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"}
+  ]
+}

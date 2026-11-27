@@ -6,7 +6,13 @@
   <link rel="stylesheet" href="/queue.css">
   <script src="/ui/ui.js" defer></script>
   <script src="/ui/session.js" defer></script><script src="/queue-model.js" defer></script><script src="/queue.js" defer></script>
-<link rel="icon" href="/ui/favicon.svg" type="image/svg+xml"></head><body data-staff-app data-page="orders"><main>
+<link rel="icon" href="/ui/favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#007bff">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="stylesheet" href="/pwa/pwa.css">
+  <script src="/pwa/pwa.js" defer></script>
+</head><body data-staff-app data-page="orders"><main>
   <div class="page-heading"><div><h1>Daftar antrean</h1><p class="muted">Pesanan dan status layanan ULaundry.</p></div><div class="toolbar"><a class="button" href="/pos.html">Pesanan baru</a><button id="refresh-orders" type="button" class="secondary">Muat ulang</button></div></div>
   <form id="queue-filter" class="card" aria-label="Filter antrean">
     <div class="fields"><label for="queue-search">Cari ID atau nama pelanggan<input id="queue-search" type="search" maxlength="100" autocomplete="off"></label>

@@ -1,6 +1,12 @@
 <!doctype html><html lang="id"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Kas dan shift — ULaundry</title>
 <link rel="stylesheet" href="/ui/tokens.css"><link rel="stylesheet" href="/ui/ui.css"><link rel="stylesheet" href="/reports.css"><link rel="stylesheet" href="/shifts.css">
-<script src="/ui/ui.js" defer></script><script src="/ui/session.js" defer></script><script src="/reports-model.js" defer></script><script src="/shifts.js" defer></script><link rel="icon" href="/ui/favicon.svg" type="image/svg+xml"></head>
+<script src="/ui/ui.js" defer></script><script src="/ui/session.js" defer></script><script src="/reports-model.js" defer></script><script src="/shifts.js" defer></script><link rel="icon" href="/ui/favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="theme-color" content="#007bff">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="stylesheet" href="/pwa/pwa.css">
+  <script src="/pwa/pwa.js" defer></script>
+</head>
 <body data-staff-app data-page="shifts"><main>
   <div class="page-heading"><div><h1>Kas dan shift</h1><p id="scope">Memeriksa sesi…</p></div><button id="reload" type="button" class="secondary no-print">Muat ulang</button></div>
   <p id="message" class="ui-alert no-print" role="status"></p><p id="command-result" class="ui-alert no-print" role="status"></p><button id="retry-shift" type="button" class="no-print" hidden>Periksa / kirim ulang transaksi yang sama</button>

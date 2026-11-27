@@ -1,0 +1,7 @@
+.pwa-panel { width: 100%; max-width: 48rem; margin: 0 auto var(--space-4); padding: var(--space-3); background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-input-border); border-radius: var(--radius-card); box-shadow: var(--shadow-card); }
+.pwa-panel summary { cursor: pointer; min-height: var(--control-height); align-content: center; font-weight: bold; }
+.pwa-panel p { margin-block: var(--space-3); }
+.pwa-panel button { margin: var(--space-1); }
+.pwa-panel summary:focus-visible { outline: 3px solid var(--color-action); outline-offset: 2px; }
+.login-page main { grid-template-rows: auto 1fr; }
+@media print { .pwa-panel { display: none !important; } }
